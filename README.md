@@ -17,6 +17,33 @@ Below is the high-level workflow of our multi-agent supply chain system, demonst
 </p>
 
 ---
+### 🧠 Core Components & Agent Roles
+
+Our architecture utilizes a multi-agent StateGraph orchestration model divided across three distinct lifecycle phases: **Planning**, **Execution**, and **Monitoring & Optimization**.
+
+* **👤 User Interface (Customer Layer)**
+  * Handles the initial order intake.
+  * Features a real-time **Workflow Health Monitor** that provides a continuous feedback loop.
+  * Displays final order fulfillment and reporting data.
+
+* **🌐 Supply Chain Intelligence Agent**
+  * **Order Assessment:** Conducts initial demand analysis and disruption screening.
+  * **Continuous Monitoring:** Tracks real-time performance data and route efficiency.
+  * **Disruption Detection:** Identifies external threats (e.g., weather delays, port congestion) and triggers **Autonomous Optimization** to dynamically adjust plans.
+
+* **⚙️ Process Orchestration Agent**
+  * **Logistics Planning:** Checks inventory status and selects optimal routes and carriers.
+  * **Autonomous Execution:** Manages the active fulfillment process.
+  * **Self-Correction Protocols:** The core of the system's resilience. If external errors occur (e.g., carrier failure), it autonomously triggers **Alternative Supplier Selection** or **Autonomous Rerouting** without human intervention.
+  * **Order Completion:** Ensures non-time models and dynamic adjustments are finalized.
+
+* **🛡️ Verification & Compliance Agent**
+  * Runs parallel to the planning phase to ensure all sourcing and routing decisions meet regulatory frameworks.
+  * Locks in an immutable **Decision Audit Trail** before execution begins, ensuring complete transparency.
+
+* **📦 External Entities (Simulated)**
+  * Represents external endpoints for Supplier P.O. Creation, Carrier Booking, and Warehouse Picking. These nodes feed real-time success/failure signals back into the Orchestration Agent's error-handling loops.
+---
 
 ## 📊 Business Impact Model
 
