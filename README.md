@@ -12,7 +12,7 @@ View your app in AI Studio: https://ai.studio/apps/46a41076-c9cb-4228-a29f-f532c
 
 **Prerequisites:**  Node.js
 
-![Agentic Supply Chain Architecture Workflow](./SCM_Architecture_Workflow.png)
+![Agentic Supply Chain Architecture Workflow](SCM_Architecture_Workflow.png)
 
 1. Install dependencies:
    `npm install`
