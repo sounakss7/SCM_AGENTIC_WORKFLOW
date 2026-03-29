@@ -44,8 +44,9 @@ To quantify the value of this Agentic SCM Workflow, we modeled the impact on a m
    npm install
 2. **Configure Environment:**
    Create a .env.local file in the root directory of your project and set your Gemini API key:
+    ```bash
    GEMINI_API_KEY=your_gemini_api_key_here
-3. **Run the application:**
+4. **Run the application:**
     ```bash
     npm run dev
-   npm run dev
+   
