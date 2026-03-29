@@ -12,7 +12,11 @@ View your app in AI Studio: https://ai.studio/apps/46a41076-c9cb-4228-a29f-f532c
 
 **Prerequisites:**  Node.js
 
-![Agentic Supply Chain Architecture Workflow](SCM_ Architecture_Workflow.png)
+## 🏗️ Architecture
+
+Below is the high-level workflow of our multi-agent supply chain system, demonstrating autonomous planning, execution, and error recovery:
+
+![Agentic Supply Chain Architecture Workflow](SCM_Architecture_Workflow.png)
 
 1. Install dependencies:
    `npm install`
