@@ -11,9 +11,7 @@ This repository contains the prototype for an autonomous multi-agent supply chai
 
 Below is the high-level workflow of our multi-agent supply chain system, demonstrating autonomous planning, execution, and error recovery:
 
-<p align="center">
-  <img src="SCM_Architecture_Workflow.png" alt="Agentic Supply Chain Architecture Workflow" width="800">
-</p>
+
 
 ---
 ### 🧠 Core Components & Agent Roles
