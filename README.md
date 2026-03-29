@@ -1,6 +1,3 @@
-<div align="center">
-  <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
 # Agentic Supply Chain Workflow
 
@@ -45,4 +42,10 @@ To quantify the value of this Agentic SCM Workflow, we modeled the impact on a m
 1. **Install dependencies:**
    ```bash
    npm install
-   
+2. **Configure Environment:**
+   Create a .env.local file in the root directory of your project and set your Gemini API key:
+   GEMINI_API_KEY=your_gemini_api_key_here
+3. **Run the application:**
+    ```bash
+    npm run dev
+   npm run dev
