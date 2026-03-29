@@ -1,5 +1,4 @@
-<div align="center">
-<i# Agentic Supply Chain Workflow
+# Agentic Supply Chain Workflow
 
 This repository contains the prototype for an autonomous multi-agent supply chain system, built for the ET Gen AI Hackathon.
 
@@ -81,22 +80,4 @@ To quantify the value of this Agentic SCM Workflow, we modeled the impact on a m
 
 ## 👨‍💻 Contributors
 
-* **Sounak Sarkar** - *Lead Developer & AI Architect* - [@sounakss7](https://github.com/sounakss7)mg width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/46a41076-c9cb-4228-a29f-f532c51c784b
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+* **Sounak Sarkar** - *Lead Developer & AI Architect* - [@sounakss7](https://github.com/sounakss7)
