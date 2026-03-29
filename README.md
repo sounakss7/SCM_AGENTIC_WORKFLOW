@@ -77,3 +77,8 @@ To quantify the value of this Agentic SCM Workflow, we modeled the impact on a m
     ```bash
     npm run dev
    
+---
+
+## 👨‍💻 Contributors
+
+* **Sounak Sarkar** - *Lead Developer & AI Architect* - [@sounakss7](https://github.com/sounakss7)
