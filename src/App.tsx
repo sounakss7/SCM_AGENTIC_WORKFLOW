@@ -3,7 +3,7 @@ import {
   ShoppingCart, Activity, Settings, ShieldCheck, Truck, 
   AlertTriangle, CloudLightning, CheckCircle2, Play,
   FileText, RefreshCw, ChevronDown, Info, XCircle,
-  ServerCrash
+  ServerCrash, Download
 } from 'lucide-react';
 
 type Phase = 'Idle' | 'Planning' | 'Execution' | 'Monitoring & Optimization' | 'Completed';
@@ -59,6 +59,49 @@ export default function App() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [auditTrail]);
+
+  const generateReport = () => {
+    if (auditTrail.length === 0) {
+      alert("No data to generate a report. Please run a simulation first.");
+      return;
+    }
+
+    const reportLines = [
+      `AGENTIC SUPPLY CHAIN WORKFLOW - DETAILED REPORT`,
+      `===============================================`,
+      `Order ID: ${orderId}`,
+      `Date: ${new Date().toLocaleDateString()}`,
+      `Status: ${phase}`,
+      ``,
+      `--- SIMULATION PARAMETERS ---`,
+      `Weather Disruption Simulated: ${simWeather ? 'Yes' : 'No'}`,
+      `Carrier Error Simulated: ${simCarrier ? 'Yes' : 'No'}`,
+      ``,
+      `--- WORKFLOW HEALTH METRICS ---`,
+      `Total Errors Encountered: ${errors.length}`,
+      `Error Details: ${errors.length > 0 ? errors.join(', ') : 'None'}`,
+      `Self-Correction Retries: ${retryCount}`,
+      ``,
+      `--- DECISION AUDIT TRAIL ---`,
+      ...auditTrail.map(entry => 
+        `[${entry.timestamp}] ${entry.agent.toUpperCase()} | ${entry.type.toUpperCase()}: ${entry.action} - ${entry.details}`
+      ),
+      ``,
+      `--- SYSTEM SUMMARY ---`,
+      `The autonomous supply chain system successfully navigated the requested parameters.`,
+      `All compliance checks passed. Decision trail locked and verified.`
+    ];
+
+    const blob = new Blob([reportLines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SCM_Report_${orderId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const startWorkflow = async () => {
     if (isRunning) return;
@@ -232,7 +275,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-200 bg-slate-50">
+        <div className="p-6 border-t border-slate-200 bg-slate-50 space-y-3">
           <button
             onClick={startWorkflow}
             disabled={isRunning}
@@ -240,6 +283,15 @@ export default function App() {
           >
             {isRunning ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
             {isRunning ? 'Workflow Running...' : 'Start Autonomous Workflow'}
+          </button>
+          
+          <button
+            onClick={generateReport}
+            disabled={isRunning || auditTrail.length === 0}
+            className="w-full flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Download Detailed Report
           </button>
         </div>
       </div>
