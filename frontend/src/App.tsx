@@ -1,136 +1,131 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, Truck, AlertTriangle, ShoppingCart } from 'lucide-react';
+import './App.css';
 
-// Define the shape of our audit log based on the backend
 interface AuditEntry {
   agent: string;
   action: string;
 }
 
-// Get the backend API URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+interface WorkflowState {
+  status: string;
+  phase: string;
+  disruptions: string[];
+  audit_trail: AuditEntry[];
+}
 
-function App() {
-  const [workflowStatus, setWorkflowStatus] = useState('Standby');
-  const [activeErrors, setActiveErrors] = useState(0);
-  const [logs, setLogs] = useState<AuditEntry[]>([]);
-  const [isSimulatingDisruption, setIsSimulatingDisruption] = useState(false);
+const App: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [simulateDisruption, setSimulateDisruption] = useState(false);
 
-  // The function to trigger the LangGraph backend
-  const triggerOrder = async () => {
-    setWorkflowStatus('Operational');
-    setLogs([{ agent: "System", action: "Initializing workflow..." }]);
-    setActiveErrors(isSimulatingDisruption ? 1 : 0);
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+  const handleStartWorkflow = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      // Use the configured backend URL
-      const response = await fetch(`${API_URL}/api/place_order`, {
+      const response = await fetch(`${API_BASE_URL}/api/place_order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          order_id: `ORD-${Math.floor(Math.random() * 10000)}`,
-          simulate_disruption: isSimulatingDisruption
-        })
+        body: JSON.stringify({
+          order_id: `ORD-${Date.now()}`,
+          simulate_disruption: simulateDisruption
+        }),
       });
 
-      const data = await response.json();
-      
-      // Update the dashboard with the LangGraph audit trail
-      if (data.state && data.state.audit_trail) {
-        setLogs(data.state.audit_trail);
-        setWorkflowStatus(data.state.status || 'Completed');
-        if (data.state.status === "Order Fulfilled") {
-            setActiveErrors(0); // Clear errors on success
-        }
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
       }
-    } catch (error) {
-      console.error("Failed to connect to backend:", error);
-      setLogs(prev => [...prev, { agent: "Error", action: "Failed to connect to FastAPI backend." }]);
-      setWorkflowStatus('Error');
-    }
-  };
 
-  // Helper to color-code agents in the log
-  const getAgentColor = (agent: string) => {
-    switch(agent) {
-      case 'UI': return 'text-blue-400';
-      case 'Intelligence': return 'text-purple-400';
-      case 'Orchestration': return 'text-emerald-400';
-      case 'Compliance': return 'text-amber-400';
-      case 'Error': return 'text-red-400';
-      default: return 'text-slate-300';
+      const data = await response.json();
+      setWorkflowStatus({
+        status: data.state?.status || 'Processing',
+        phase: data.state?.current_phase || 'Unknown',
+        disruptions: data.state?.detected_disruptions || [],
+        audit_trail: data.state?.audit_trail || []
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <header className="mb-8 border-b border-slate-700 pb-4">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <Truck className="text-blue-400" />
-          Autonomous Enterprise SCM Dashboard
-        </h1>
+    <div className="app-container">
+      <header className="app-header">
+        <h1>🏭 Supply Chain Management System</h1>
+        <p>AI-Powered Autonomous Workflow with LLM Intelligence</p>
       </header>
 
-      {/* Workflow Health Monitor */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Activity /> System Health</h2>
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <span>Status:</span>
-              <span className={`font-mono ${workflowStatus === 'Completed' || workflowStatus === 'Order Fulfilled' ? 'text-green-400' : workflowStatus === 'Error' ? 'text-red-400' : 'text-yellow-400'}`}>
-                {workflowStatus}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Active Disruptions:</span>
-              <span className="font-mono text-red-400">{activeErrors}</span>
-            </div>
-          </div>
-        </div>
+      <main className="app-main">
+        <section className="controls">
+          <button 
+            onClick={handleStartWorkflow} 
+            disabled={loading}
+            className="btn btn-primary"
+          >
+            {loading ? 'Processing...' : 'Start Workflow'}
+          </button>
+          
+          <label className="checkbox-label">
+            <input 
+              type="checkbox" 
+              checked={simulateDisruption}
+              onChange={(e) => setSimulateDisruption(e.target.checked)}
+              disabled={loading}
+            />
+            Simulate Disruption
+          </label>
+        </section>
 
-        {/* Dynamic Execution Log */}
-        <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg md:col-span-2">
-          <h2 className="text-xl font-bold mb-4">Execution Log</h2>
-          <div className="h-48 overflow-y-auto bg-slate-950 p-4 rounded font-mono text-sm space-y-2 flex flex-col gap-1">
-            {logs.length === 0 && <p className="text-slate-500">Waiting for system activity...</p>}
-            {logs.map((log, index) => (
-              <div key={index} className="flex gap-3 border-b border-slate-800 pb-1">
-                <span className={`font-bold min-w-[120px] ${getAgentColor(log.agent)}`}>
-                  [{log.agent}]
-                </span>
-                <span className="text-slate-300">{log.action}</span>
+        {error && (
+          <section className="error-section">
+            <h2>⚠️ Error</h2>
+            <p>{error}</p>
+          </section>
+        )}
+
+        {workflowStatus && (
+          <section className="status-section">
+            <div className="status-card">
+              <h2>Workflow Status</h2>
+              <div className="status-details">
+                <p><strong>Status:</strong> <span className={`status-${workflowStatus.status.toLowerCase()}`}>{workflowStatus.status}</span></p>
+                <p><strong>Phase:</strong> {workflowStatus.phase}</p>
+                
+                {workflowStatus.disruptions.length > 0 && (
+                  <div className="disruptions-section">
+                    <strong>⚠️ Disruptions Detected:</strong>
+                    <ul>
+                      {workflowStatus.disruptions.map((d, i) => (
+                        <li key={i}>{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Disruption Simulation Controls */}
-        <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg md:col-span-3">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><AlertTriangle /> Simulation Controls</h2>
-          <div className="flex gap-4 items-center">
-            <button 
-              onClick={triggerOrder}
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded flex items-center gap-2 transition-colors font-semibold">
-              <ShoppingCart size={18} /> Run Workflow
-            </button>
-            
-            <label className="flex items-center gap-2 cursor-pointer ml-4">
-              <input 
-                type="checkbox" 
-                className="w-5 h-5 accent-red-500"
-                checked={isSimulatingDisruption}
-                onChange={(e) => setIsSimulatingDisruption(e.target.checked)}
-              />
-              <span className={`${isSimulatingDisruption ? 'text-red-400 font-bold' : 'text-slate-400'}`}>
-                Simulate Severe Weather Disruption
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
+            {workflowStatus.audit_trail.length > 0 && (
+              <div className="audit-card">
+                <h3>📋 Audit Trail</h3>
+                <ul className="audit-list">
+                  {workflowStatus.audit_trail.map((entry, i) => (
+                    <li key={i} className={`audit-item audit-${entry.agent.toLowerCase()}`}>
+                      <strong>[{entry.agent}]:</strong> {entry.action}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+      </main>
     </div>
   );
-}
+};
 
 export default App;

@@ -1,6 +1,9 @@
 {
-  "buildCommand": "cd frontend && npm ci --legacy-peer-deps && npm run build",
+  "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
-  "nodeVersion": "20.x"
+  "nodeVersion": "20.x",
+  "env": {
+    "VITE_API_URL": "https://scm-agentic-workflow.vercel.app/api"
+  }
 }
