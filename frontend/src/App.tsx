@@ -7,6 +7,9 @@ interface AuditEntry {
   action: string;
 }
 
+// Get the backend API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 function App() {
   const [workflowStatus, setWorkflowStatus] = useState('Standby');
   const [activeErrors, setActiveErrors] = useState(0);
@@ -20,8 +23,8 @@ function App() {
     setActiveErrors(isSimulatingDisruption ? 1 : 0);
 
     try {
-      // Use the codespace URL or localhost
-      const response = await fetch('https://glorious-xylophone-699556vv7r69crw9q-8000.app.github.dev/api/place_order', {
+      // Use the configured backend URL
+      const response = await fetch(`${API_URL}/api/place_order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

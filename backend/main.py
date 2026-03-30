@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import TypedDict, List
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import StateGraph
+from langgraph.graph.graph import START, END
 from dotenv import load_dotenv
 
 # --- NEW: Import LangChain Google GenAI ---
@@ -13,7 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 
 # Initialize the Gemini LLM
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=os.getenv("GEMINI_API_KEY"))
 
 # 1. Initialize FastAPI and CORS
 app = FastAPI(title="Agentic SCM Workflow API")
