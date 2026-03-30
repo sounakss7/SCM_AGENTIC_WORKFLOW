@@ -2,7 +2,7 @@
 
 This repository contains the prototype for an autonomous multi-agent supply chain system, built for the ET Gen AI Hackathon.
 
-🚀 **Live Demo:** [https://scm-agentic-workflow.vercel.app/](https://scm-agentic-workflow.vercel.app/)  
+🚀 **Live Demo:** [https://scm-agentic-workflow.vercel.app/](https://scm-workflow-live.vercel.app/)  
 🛠️ **AI Studio App:** [View in AI Studio](https://ai.studio/apps/46a41076-c9cb-4228-a29f-f532c51c784b)
 
 ---
