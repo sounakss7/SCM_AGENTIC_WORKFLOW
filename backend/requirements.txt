@@ -5,3 +5,9 @@ langchain-google-genai
 python-dotenv
 pydantic
 pydantic-core
+langchain-groq
+langchain-mistralai
+qdrant-client
+langchain-qdrant
+sentence-transformers
+langchain-huggingface
