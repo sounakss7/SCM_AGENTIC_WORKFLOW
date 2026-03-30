@@ -16,7 +16,9 @@ import {
   Zap,
   BrainCircuit,
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  Truck,
+  Map
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -34,6 +36,9 @@ interface WorkflowState {
   status: string;
   current_phase: string;
   inventory_status: string;
+  route_selected: string;
+  carrier_status: string;
+  optimization_cycles: number;
   detected_disruptions: string[];
   audit_trail: AuditEntry[];
 }
@@ -82,6 +87,9 @@ const App = () => {
         status: data.state.status || 'Unknown',
         current_phase: data.state.current_phase || 'Unknown',
         inventory_status: data.state.inventory_status || 'Unknown',
+        route_selected: data.state.route_selected || 'Standard',
+        carrier_status: data.state.carrier_status || 'Pending',
+        optimization_cycles: data.state.optimization_cycles || 0,
         detected_disruptions: data.state.detected_disruptions || [],
         audit_trail: data.state.audit_trail || [],
       });
@@ -435,6 +443,31 @@ const App = () => {
                 <p className="text-2xl font-bold text-teal-400">
                   {workflowStatus.inventory_status}
                 </p>
+                <div className="mt-4 pt-4 border-t border-slate-700/50">
+                   <div className="flex items-center justify-between mb-2">
+                     <span className="text-xs text-slate-500 uppercase font-semibold">Logistics Route</span>
+                     <Map className="w-3.5 h-3.5 text-orange-400" />
+                   </div>
+                   <p className="text-sm font-bold text-orange-400 truncate" title={workflowStatus.route_selected}>
+                     {workflowStatus.route_selected}
+                   </p>
+                </div>
+                <div className="mt-3">
+                   <div className="flex items-center justify-between mb-1">
+                     <span className="text-xs text-slate-500 uppercase font-semibold">Carrier API</span>
+                     <Truck className="w-3.5 h-3.5 text-blue-400" />
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <p className={`text-sm font-bold ${workflowStatus.carrier_status.includes('Reject') || workflowStatus.carrier_status.includes('Fail') ? 'text-rose-400' : 'text-blue-400'}`}>
+                       {workflowStatus.carrier_status}
+                     </p>
+                     {workflowStatus.optimization_cycles > 0 && (
+                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] font-bold rounded-full animate-pulse">
+                          Auto-Recovered
+                        </span>
+                     )}
+                   </div>
+                </div>
               </div>
 
             </div>

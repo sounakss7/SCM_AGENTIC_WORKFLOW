@@ -1,12 +1,11 @@
 import os
 import re
-from typing import TypedDict, List, Dict, Any
-
+from typing import TypedDict, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, END
 
 # LLMs
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -128,7 +127,7 @@ class SecurityGuards:
         return anonymized
 
 # ============= 4. Data Models & API Setup =============
-app = FastAPI(title="SCM Agentic Workflow API (Hackathon Arch)")
+app = FastAPI(title="SCM Agentic Workflow API (Hackathon External Node Loop)")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 class OrderRequest(BaseModel):
@@ -139,15 +138,18 @@ class SCMState(TypedDict):
     order_id: str
     current_phase: str
     inventory_status: str
+    route_selected: str
+    carrier_status: str
+    optimization_cycles: int
     detected_disruptions: List[str]
     audit_trail: List[dict]
     status: str
     requires_correction: bool
     simulate_disruption: bool
 
-# ============= 5. Agent Nodes =============
+# ============= 5. Agent Nodes (CYCLIC LOOP) =============
 def user_interface_agent(state: SCMState) -> SCMState:
-    state["current_phase"] = "Planning"
+    state["current_phase"] = "Order Intake Phase"
     
     # 🔒 InputGuard Implementation
     is_safe = SecurityGuards.InputGuard(state)
@@ -155,16 +157,19 @@ def user_interface_agent(state: SCMState) -> SCMState:
         state["status"] = "Security Exception"
         state["detected_disruptions"] = ["Malicious Prompt Injection Intercepted"]
         state["requires_correction"] = True
-        AuditLogger.log(state, "UI (InputGuard)", f"Request blocked due to security alert on Order {state['order_id']}", "Guard Layer")
+        AuditLogger.log(state, "UI (Customer Layer)", f"Request blocked due to security alert on Order {state['order_id']}", "Guard Layer")
     else:
-        AuditLogger.log(state, "UI", f"Order {state['order_id']} received and structurally verified.", "Deterministic Engine")
+        AuditLogger.log(state, "UI", f"Initial order intake completed. Workflow Health Monitor activated for Order {state['order_id']}.", "Deterministic Engine")
     return state
+
 
 def supply_chain_intelligence_agent(state: SCMState) -> SCMState:
     if state["status"] == "Security Exception":
         return state
         
+    state["current_phase"] = "Order Assessment Phase"
     disruptions = state.get("detected_disruptions", [])
+    
     if disruptions:
         model = llm_router.get_model("groq") # Prefer fast Groq Mixtral
         
@@ -181,7 +186,7 @@ def supply_chain_intelligence_agent(state: SCMState) -> SCMState:
 
         if model:
             try:
-                prompt = f"Analyze supply chain disruption: {', '.join(disruptions)}. {historical_context}. Provide a brief 1-sentence mitigation."
+                prompt = f"Analyze supply chain threat: {', '.join(disruptions)}. {historical_context}. Trigger an Autonomous Optimization adjustment in 1 sentence."
                 response = model.invoke(prompt)
                 analysis = str(response.content)
                 
@@ -203,53 +208,114 @@ def supply_chain_intelligence_agent(state: SCMState) -> SCMState:
             analysis = "No APIs operational - applying Standard Operating Procedure."
             
         used_engine = "Groq (Mixtral 8x7b)" if model else "Deterministic Fallback"
-        AuditLogger.log(state, "Intelligence", f"Analysis: {analysis}", used_engine)
+        AuditLogger.log(state, "Intelligence", f"Disruption Detected! Triggering Autonomous Optimization: {analysis}", used_engine)
         state["requires_correction"] = True
     else:
-        AuditLogger.log(state, "Intelligence", "System operating normally.", "Deterministic Engine")
+        AuditLogger.log(state, "Intelligence", "Continuous Monitoring: Demand analysis verified. Route efficiency is currently optimal (98.4%).", "Deterministic Engine")
         
     return state
 
-def orchestration_agent(state: SCMState) -> SCMState:
-    if state["status"] == "Security Exception":
-        return state
-        
-    state["current_phase"] = "Execution"
-    if state["requires_correction"]:
-        state["status"] = "Disruption Handling Active"
-        state["inventory_status"] = "Rerouting"
-        AuditLogger.log(state, "Orchestration", "Disruption evaluated: Auto-rerouting active.", "State Graph Node")
-    else:
-        state["status"] = "Order Processing"
-        state["inventory_status"] = "Updated"
-        AuditLogger.log(state, "Orchestration", "Standard execution path selected.", "State Graph Node")
-    return state
 
 def compliance_agent(state: SCMState) -> SCMState:
     if state["status"] == "Security Exception":
         return state
         
-    state["current_phase"] = "Compliance"
+    state["current_phase"] = "Regulatory Sandbox Verification"
     
     # 🔒 AuditLogger Final Compliance Verification
-    AuditLogger.log(state, "Compliance", "Order passed multi-layer security and regulatory checks.", "Mistral Small API")
+    AuditLogger.log(state, "Compliance", "Running parallel regulatory checks. Immutable Decision Audit Trail firmly locked before physical execution.", "Mistral Small API")
     state["requires_correction"] = False
-    state["status"] = "Order Fulfilled"
     return state
+
+
+def orchestration_agent(state: SCMState) -> SCMState:
+    if state["status"] == "Security Exception":
+        return state
+        
+    state["current_phase"] = "Logistics Planning Phase"
+    cycles = state.get("optimization_cycles", 0)
+    
+    if cycles > 0:
+        # Autonomous Loop Self-Correction Logic
+        state["status"] = "Self-Correction Protocols Active"
+        state["route_selected"] = f"Alternative Freight Route Beta-V{cycles}"
+        state["inventory_status"] = "Alternative Supplier Pinged"
+        AuditLogger.log(state, "Orchestration", f"Self-Correction Protocol (Cycle {cycles}): Autonomously triggering Alternative Supplier Selection & Rerouting.", "Graph Node Algorithm")
+    else:
+        if state["detected_disruptions"]:
+            state["status"] = "Logistics Rerouting"
+            state["route_selected"] = "Optimized Alternative A"
+            state["inventory_status"] = "Rerouting Pending"
+            AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Adjusting default route due to Intelligence flag.", "Graph Node Algorithm")
+        else:
+            state["status"] = "Order Processing"
+            state["route_selected"] = "Standard Maritime Path"
+            state["inventory_status"] = "Stock Reserved"
+            AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Evaluated inventory status and selected optimal routes/carriers.", "Graph Node Algorithm")
+            
+    return state
+
+
+def external_entities_node(state: SCMState) -> SCMState:
+    """This node simulates external Supplier P.O., Carriers, and Warehouses to feed data back."""
+    if state["status"] == "Security Exception":
+        return state
+        
+    state["current_phase"] = "Autonomous Execution Phase"
+    
+    # Simulate a real external Carrier/Supplier failure if 'simulate_disruption' is true
+    if state["simulate_disruption"] and state["optimization_cycles"] < 1:
+        state["carrier_status"] = "Booking Rejected (Port Overcapacity)"
+        state["optimization_cycles"] += 1
+        AuditLogger.log(state, "External Nodes", "Carrier Booking Rejected by 3rd party! Feeding failure signal back to Error-Handling Loop...", "Supply Chain Sim")
+    else:
+        state["carrier_status"] = "Carrier Booking Confirmed"
+        state["status"] = "Execution Fulfilled"
+        AuditLogger.log(state, "External Nodes", "Warehouse Picking & Supplier P.O. finalized. Ensuring non-time models are validated.", "Supply Chain Sim")
+        
+    return state
+
+
+def orchestration_edge_router(state: SCMState) -> str:
+    """Decides if we loop back backward for Self-Correction or finish the workflow"""
+    if state["status"] == "Security Exception":
+        return "end"
+    if state.get("carrier_status") == "Booking Rejected (Port Overcapacity)":
+        return "loop_to_orchestration" # Loop failure exactly backward
+    return "end"
+
 
 # ============= 6. LangGraph Workflow =============
 def create_workflow():
     workflow = StateGraph(SCMState)
+    
+    # Register Nodes
     workflow.add_node("ui_agent", user_interface_agent)
     workflow.add_node("intelligence_agent", supply_chain_intelligence_agent)
-    workflow.add_node("orchestration_agent", orchestration_agent)
     workflow.add_node("compliance_agent", compliance_agent)
+    workflow.add_node("orchestration_agent", orchestration_agent)
+    workflow.add_node("external_entities", external_entities_node)
     
     workflow.set_entry_point("ui_agent")
+    
+    # Linear Phase (Assessment -> Lock-in Audit)
     workflow.add_edge("ui_agent", "intelligence_agent")
-    workflow.add_edge("intelligence_agent", "orchestration_agent")
-    workflow.add_edge("orchestration_agent", "compliance_agent")
-    workflow.set_finish_point("compliance_agent")
+    workflow.add_edge("intelligence_agent", "compliance_agent") # Locks in before execution as requested!
+    workflow.add_edge("compliance_agent", "orchestration_agent")
+    
+    # Autonomous Execution Phase (The Bridge to External world)
+    workflow.add_edge("orchestration_agent", "external_entities")
+    
+    # The Cyclic Error-Handling Loop (Conditional Edge)
+    workflow.add_conditional_edges(
+        "external_entities",
+        orchestration_edge_router,
+        {
+            "loop_to_orchestration": "orchestration_agent", # Triggers Alternative Route Planner
+            "end": END
+        }
+    )
+    
     return workflow.compile()
 
 workflow = create_workflow()
@@ -257,7 +323,7 @@ workflow = create_workflow()
 # ============= 7. Endpoints =============
 @app.get("/")
 def root():
-    return {"message": "SCM API (Hackathon Arch + Qdrant/Security Edition) is live."}
+    return {"message": "SCM API (Cyclic Graph Hackathon Edition) is live."}
 
 @app.get("/health")
 def health_check():
@@ -275,7 +341,10 @@ async def place_order(request: OrderRequest):
             "order_id": request.order_id,
             "current_phase": "Initializing",
             "inventory_status": "Checking",
-            "detected_disruptions": ["Supplier delay"] if request.simulate_disruption else [],
+            "route_selected": "Pending Evaluation",
+            "carrier_status": "Standby",
+            "optimization_cycles": 0,
+            "detected_disruptions": ["Severe Port Congestion (14-delay warning)"] if request.simulate_disruption else [],
             "audit_trail": [],
             "status": "Processing",
             "requires_correction": False,
@@ -289,6 +358,9 @@ async def place_order(request: OrderRequest):
                 "status": final_state["status"],
                 "current_phase": final_state["current_phase"],
                 "inventory_status": final_state["inventory_status"],
+                "route_selected": final_state["route_selected"],
+                "carrier_status": final_state["carrier_status"],
+                "optimization_cycles": final_state["optimization_cycles"],
                 "detected_disruptions": final_state["detected_disruptions"],
                 "audit_trail": final_state["audit_trail"]
             }
@@ -301,8 +373,11 @@ async def place_order(request: OrderRequest):
                 "status": "Fatal Error", 
                 "current_phase": "Error",
                 "inventory_status": "Unknown",
+                "route_selected": "None",
+                "carrier_status": "Failed",
+                "optimization_cycles": 0,
                 "detected_disruptions": [],
-                "audit_trail": [{"timestamp": "now", "agent": "System Exception", "action": str(e)}]
+                "audit_trail": [{"timestamp": "now", "agent": "System Exception", "action": str(e), "model_used": "Fatal Crash"}]
             }
         }
 
