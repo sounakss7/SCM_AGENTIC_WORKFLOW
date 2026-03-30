@@ -16,7 +16,6 @@ from langchain_mistralai import ChatMistralAI
 # Qdrant Vector Memory
 from qdrant_client import QdrantClient, models as qdrant_models
 from langchain_qdrant import QdrantVectorStore
-from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables
 load_dotenv()
@@ -64,7 +63,9 @@ llm_router = LLMRouter()
 vector_store = None
 qclient = None
 try:
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Use Gemini Embeddings to strictly bypass Vercel's heavy PyTorch size limits!
+    embeddings = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0).embeddings if False else __import__('langchain_google_genai').GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
 
@@ -76,7 +77,7 @@ try:
     if not qclient.collection_exists("mitigation_memory"):
         qclient.create_collection(
             collection_name="mitigation_memory", 
-            vectors_config=qdrant_models.VectorParams(size=384, distance=qdrant_models.Distance.COSINE)
+            vectors_config=qdrant_models.VectorParams(size=768, distance=qdrant_models.Distance.COSINE)
         )
     
     vector_store = QdrantVectorStore(

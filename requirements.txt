@@ -9,5 +9,3 @@ langchain-groq
 langchain-mistralai
 qdrant-client
 langchain-qdrant
-sentence-transformers
-langchain-huggingface
