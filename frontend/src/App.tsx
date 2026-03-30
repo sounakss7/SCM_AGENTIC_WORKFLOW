@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './App.css';
 
 interface AuditEntry {
@@ -13,7 +13,7 @@ interface WorkflowState {
   audit_trail: AuditEntry[];
 }
 
-const App: React.FC = () => {
+const App = () => {
   const [loading, setLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowState | null>(null);
   const [error, setError] = useState<string | null>(null);
