@@ -3,4 +3,4 @@ uvicorn==0.24.0
 langgraph==0.0.47
 langchain-google-genai==0.0.9
 python-dotenv==1.0.0
-pydantic==2.5.0
+pydantic==2.6.4
