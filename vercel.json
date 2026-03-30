@@ -1,8 +1,15 @@
 {
-  "buildCommand": "cd frontend && npm ci && npm run build",
+  "installCommand": "cd frontend && npm install",
+  "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
   "env": {
-    "VITE_API_URL": "https://scm-agentic-workflow.vercel.app/api"
-  }
+    "VITE_API_URL": "https://scm-agentic-workflow.vercel.app"
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    }
+  ]
 }
