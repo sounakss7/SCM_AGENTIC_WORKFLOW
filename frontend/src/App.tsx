@@ -9,8 +9,13 @@ import {
   Layers, 
   Play, 
   RefreshCw,
-  ServerCrash
+  ServerCrash,
+  TerminalSquare,
+  FileText,
+  X
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import './App.css';
 
 // ============= Type Definitions =============
@@ -34,6 +39,7 @@ const App = () => {
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulateDisruption, setSimulateDisruption] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
   // API URL with fallback to localhost for development
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -84,6 +90,70 @@ const App = () => {
     }
   };
 
+  const generatePDFReport = () => {
+    if (!workflowStatus) return;
+    
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(67, 56, 202); // Indigo-700
+    doc.text("SCM Agentic Workflow Report", 14, 25);
+    
+    // Metadata
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Generated at: ${new Date().toLocaleString()}`, 14, 35);
+    doc.text(`Overall Health Status: ${workflowStatus.status}`, 14, 43);
+    doc.text(`Inventory State: ${workflowStatus.inventory_status}`, 14, 51);
+    
+    let currentY = 62;
+    
+    // Disruptions
+    if (workflowStatus.detected_disruptions.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(220, 38, 38); // Red-600
+      doc.text("! Detected Supply Chain Disruptions", 14, currentY);
+      doc.setFont("helvetica", "normal");
+      currentY += 8;
+      workflowStatus.detected_disruptions.forEach((d) => {
+        doc.text(`• ${d}`, 18, currentY);
+        currentY += 7;
+      });
+      currentY += 6;
+    }
+    
+    // Audit Trail Table
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42); // Slate-900
+    doc.text("Multi-Agent Intelligence Audit Trail", 14, currentY + 4);
+    
+    const tableData = workflowStatus.audit_trail.map(entry => [
+      entry.timestamp,
+      entry.agent,
+      entry.action
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 10,
+      head: [['Timestamp', 'Agent Node', 'Executed Action']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [67, 56, 202], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 'auto' }
+      }
+    });
+
+    const fileName = `SCM_Protocol_Report_${Date.now()}.pdf`;
+    doc.save(fileName);
+  };
+
   const getStatusColor = (status: string): string => {
     const lowerStatus = status.toLowerCase();
     if (lowerStatus.includes('fulfilled') || lowerStatus.includes('success'))
@@ -113,8 +183,75 @@ const App = () => {
   return (
     <div className="min-h-screen text-slate-100 font-sans pb-16">
       
+      {/* Log Terminal Modal Overlay */}
+      {isLogModalOpen && workflowStatus && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-[#0A0A10] border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden ring-1 ring-white/10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+              <div className="flex items-center gap-3">
+                <TerminalSquare className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-white font-bold tracking-wide">Live Diagnostics Console</h3>
+              </div>
+              <button 
+                onClick={() => setIsLogModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                title="Close Terminal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Terminal View area */}
+            <div className="p-6 overflow-y-auto font-mono text-sm flex-grow">
+              <div className="space-y-3">
+                <div className="text-slate-500 mb-6 pb-4 border-b border-slate-800">
+                  $ tail -f /var/log/scm-agentic-cluster.log<br/>
+                  [SYS] Initializing secure LLM routing streams... OK.<br/>
+                  [SYS] Connected to embedded Qdrant Vector memory block... OK.<br/>
+                  [SYS] Multi-Agent Pipeline standing by.
+                </div>
+                {workflowStatus.audit_trail.map((entry, idx) => (
+                  <div key={idx} className="pb-3 border-b border-slate-800/50 last:border-0 hover:bg-slate-800/30 p-2 -mx-2 rounded transition-colors group">
+                    <div className="flex flex-wrap gap-3 items-start">
+                      <span className="text-slate-500 shrink-0">[{entry.timestamp}]</span>
+                      <span className={`font-bold shrink-0 ${
+                        entry.agent === 'UI' ? 'text-indigo-400' :
+                        entry.agent === 'Intelligence' ? 'text-emerald-400' :
+                        entry.agent === 'Orchestration' ? 'text-fuchsia-400' :
+                        'text-teal-400'
+                      }`}>
+                        [{entry.agent.toUpperCase()}_NODE]:
+                      </span>
+                      <span className="text-slate-300 break-words group-hover:text-emerald-50 transition-colors">
+                        {entry.action}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {!loading && <div className="text-emerald-500/50 animate-pulse pt-4 flex gap-2"><span>$</span><span className="w-2 h-4 bg-emerald-500 inline-block mt-0.5"></span></div>}
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="bg-slate-900/80 px-6 py-4 border-t border-slate-800 flex justify-between items-center">
+              <span className="text-xs text-slate-400 font-mono flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Terminal connected. Read-only output.
+              </span>
+              <button 
+                onClick={() => setIsLogModalOpen(false)}
+                className="text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-5 py-2.5 rounded-xl transition-colors shadow-lg"
+               >
+                 Close Console
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Premium Header */}
-      <header className="sticky top-0 z-50 glass-panel border-b-0 border-x-0 rounded-none bg-slate-900/80 mb-10 px-6 py-5 shadow-2xl">
+      <header className="sticky top-0 z-40 glass-panel border-b-0 border-x-0 rounded-none bg-slate-900/80 mb-10 px-6 py-5 shadow-2xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-gradient-to-br from-indigo-500 to-fuchsia-600 rounded-xl shadow-lg ring-1 ring-white/10">
@@ -143,7 +280,7 @@ const App = () => {
         <section className="glass-panel p-6 sm:p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 group-hover:bg-indigo-500/20 transition-all duration-700"></div>
           
-          <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="relative z-10 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
             <div>
               <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
                 <Play className="w-5 h-5 text-indigo-400" /> Control Center
@@ -153,44 +290,69 @@ const App = () => {
               </p>
             </div>
             
-            <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-900/40 p-2 pl-5 rounded-2xl border border-slate-700/50">
-              <label className="flex items-center gap-3 cursor-pointer group/toggle">
-                <div className="relative flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={simulateDisruption}
-                    onChange={(e) => setSimulateDisruption(e.target.checked)}
-                    disabled={loading}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 group-hover/toggle:ring-2 ring-amber-500/30 transition-all"></div>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Export & Log Buttons */}
+              {workflowStatus && !loading && (
+                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
+                  <button 
+                    onClick={() => setIsLogModalOpen(true)}
+                    className="flex items-center gap-2 rounded-xl px-5 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
+                    title="View Raw Agent Logs"
+                  >
+                    <TerminalSquare className="w-4 h-4 text-emerald-400" />
+                    <span className="text-sm font-bold">Terminal Logs</span>
+                  </button>
+                  <button 
+                    onClick={generatePDFReport}
+                    className="flex items-center gap-2 rounded-xl px-5 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
+                    title="Download PDF Report"
+                  >
+                    <FileText className="w-4 h-4 text-fuchsia-400" />
+                    <span className="text-sm font-bold">Export PDF</span>
+                  </button>
                 </div>
-                <span className="text-sm font-medium text-slate-300 group-hover/toggle:text-amber-200 transition-colors">
-                  Inject Simulated Threats
-                </span>
-              </label>
+              )}
 
-              <button
-                onClick={handleStartWorkflow}
-                disabled={loading}
-                className={`flex items-center gap-2 rounded-xl px-7 py-3.5 font-bold shadow-xl transition-all duration-300 transform outline-none focus:ring-4 ${
-                  loading
-                    ? 'cursor-not-allowed bg-slate-800 text-slate-500 border border-slate-700 scale-95'
-                    : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 focus:ring-indigo-500/30 ring-offset-2 ring-offset-slate-900'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" /> 
-                    <span>Executing Protocol...</span>
-                  </>
-                ) : (
-                  <>
-                    <Activity className="w-5 h-5" /> 
-                    <span>Initialize Workflow</span>
-                  </>
-                )}
-              </button>
+              {/* Main Workflow Execute Box */}
+              <div className="flex items-center gap-5 bg-slate-900/60 p-2 pl-5 rounded-2xl border border-slate-700/50 shadow-inner">
+                <label className="flex items-center gap-3 cursor-pointer group/toggle">
+                  <div className="relative flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={simulateDisruption}
+                      onChange={(e) => setSimulateDisruption(e.target.checked)}
+                      disabled={loading}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 group-hover/toggle:ring-2 ring-amber-500/30 transition-all"></div>
+                  </div>
+                  <span className="text-sm font-medium text-slate-300 group-hover/toggle:text-amber-200 transition-colors">
+                    Inject Threats
+                  </span>
+                </label>
+
+                <button
+                  onClick={handleStartWorkflow}
+                  disabled={loading}
+                  className={`flex items-center min-w-[200px] justify-center gap-2 rounded-xl px-7 py-3.5 font-bold shadow-xl transition-all duration-300 transform outline-none focus:ring-4 ${
+                    loading
+                      ? 'cursor-not-allowed bg-slate-800 text-slate-500 border border-slate-700 scale-95'
+                      : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 focus:ring-indigo-500/30 ring-offset-2 ring-offset-slate-900'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 animate-spin" /> 
+                      <span>Executing Protocol...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Activity className="w-5 h-5" /> 
+                      <span>Initialize Agents</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -304,12 +466,12 @@ const App = () => {
               {/* Advanced Audit Trail */}
               {workflowStatus.audit_trail.length > 0 && (
                 <div className="glass-panel p-6 sm:p-8 flex-grow flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between mb-8">
+                  <div className="flex flex-wrap items-center justify-between mb-8 gap-4">
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                        Agent Event Matrix
                     </h2>
                     <span className="px-3 py-1 bg-slate-800 rounded-full text-xs font-semibold text-slate-400 border border-slate-700 shadow-inner">
-                      {workflowStatus.audit_trail.length} Logs
+                      {workflowStatus.audit_trail.length} Executions
                     </span>
                   </div>
                   
