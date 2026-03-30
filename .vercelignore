@@ -1,0 +1,9 @@
+backend/
+.env
+.env.local
+.env.example
+README.md
+LICENSE
+start_backend.sh
+.git
+node_modules/
