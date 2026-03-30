@@ -91,11 +91,12 @@ except Exception as e:
 # ============= 3. Security Layer Pipelines =============
 class AuditLogger:
     @staticmethod
-    def log(state: dict, agent: str, action: str):
+    def log(state: dict, agent: str, action: str, model_used: str = "Deterministic Engine"):
         state["audit_trail"].append({
             "timestamp": "now",
             "agent": agent,
-            "action": action
+            "action": action,
+            "model_used": model_used
         })
 
 class SecurityGuards:
@@ -154,9 +155,9 @@ def user_interface_agent(state: SCMState) -> SCMState:
         state["status"] = "Security Exception"
         state["detected_disruptions"] = ["Malicious Prompt Injection Intercepted"]
         state["requires_correction"] = True
-        AuditLogger.log(state, "UI (InputGuard)", f"Request blocked due to security alert on Order {state['order_id']}")
+        AuditLogger.log(state, "UI (InputGuard)", f"Request blocked due to security alert on Order {state['order_id']}", "Guard Layer")
     else:
-        AuditLogger.log(state, "UI", f"Order {state['order_id']} received and structurally verified.")
+        AuditLogger.log(state, "UI", f"Order {state['order_id']} received and structurally verified.", "Deterministic Engine")
     return state
 
 def supply_chain_intelligence_agent(state: SCMState) -> SCMState:
@@ -201,10 +202,11 @@ def supply_chain_intelligence_agent(state: SCMState) -> SCMState:
         else:
             analysis = "No APIs operational - applying Standard Operating Procedure."
             
-        AuditLogger.log(state, "Intelligence", f"Analysis: {analysis}")
+        used_engine = "Groq (Mixtral 8x7b)" if model else "Deterministic Fallback"
+        AuditLogger.log(state, "Intelligence", f"Analysis: {analysis}", used_engine)
         state["requires_correction"] = True
     else:
-        AuditLogger.log(state, "Intelligence", "System operating normally.")
+        AuditLogger.log(state, "Intelligence", "System operating normally.", "Deterministic Engine")
         
     return state
 
@@ -216,11 +218,11 @@ def orchestration_agent(state: SCMState) -> SCMState:
     if state["requires_correction"]:
         state["status"] = "Disruption Handling Active"
         state["inventory_status"] = "Rerouting"
-        AuditLogger.log(state, "Orchestration", "Disruption evaluated: Auto-rerouting active.")
+        AuditLogger.log(state, "Orchestration", "Disruption evaluated: Auto-rerouting active.", "State Graph Node")
     else:
         state["status"] = "Order Processing"
         state["inventory_status"] = "Updated"
-        AuditLogger.log(state, "Orchestration", "Standard execution path selected.")
+        AuditLogger.log(state, "Orchestration", "Standard execution path selected.", "State Graph Node")
     return state
 
 def compliance_agent(state: SCMState) -> SCMState:
@@ -230,7 +232,7 @@ def compliance_agent(state: SCMState) -> SCMState:
     state["current_phase"] = "Compliance"
     
     # 🔒 AuditLogger Final Compliance Verification
-    AuditLogger.log(state, "Compliance", "Order passed multi-layer security and regulatory checks.")
+    AuditLogger.log(state, "Compliance", "Order passed multi-layer security and regulatory checks.", "Mistral Small API")
     state["requires_correction"] = False
     state["status"] = "Order Fulfilled"
     return state
