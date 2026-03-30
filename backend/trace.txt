@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+  File "C:\Users\souna\.antigravity\SCM_AGENTIC_WORKFLOW\backend\venv\Lib\site-packages\langgraph\pregel\__init__.py", line 1176, in invoke
+    for chunk in self.stream(
+  File "C:\Users\souna\.antigravity\SCM_AGENTIC_WORKFLOW\backend\venv\Lib\site-packages\langgraph\pregel\__init__.py", line 669, in stream
+    checkpoint, _ = _prepare_next_tasks(
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\souna\.antigravity\SCM_AGENTIC_WORKFLOW\backend\venv\Lib\site-packages\langgraph\pregel\__init__.py", line 1388, in _prepare_next_tasks
+    seen = checkpoint["versions_seen"][name]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+KeyError: '__start__'

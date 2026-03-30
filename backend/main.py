@@ -6,7 +6,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.graph import StateGraph
-from langgraph.graph.graph import START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Load environment variables
@@ -145,11 +144,11 @@ def create_workflow():
     workflow.add_node("compliance_agent", compliance_agent)
     
     # Add edges (linear flow)
-    workflow.add_edge(START, "ui_agent")
+    workflow.set_entry_point("ui_agent")
     workflow.add_edge("ui_agent", "intelligence_agent")
     workflow.add_edge("intelligence_agent", "orchestration_agent")
     workflow.add_edge("orchestration_agent", "compliance_agent")
-    workflow.add_edge("compliance_agent", END)
+    workflow.set_finish_point("compliance_agent")
     
     return workflow.compile()
 
