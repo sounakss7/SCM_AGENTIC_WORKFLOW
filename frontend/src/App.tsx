@@ -1,4 +1,16 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { 
+  Activity, 
+  AlertTriangle, 
+  Box, 
+  CheckCircle2, 
+  Cpu, 
+  Factory, 
+  Layers, 
+  Play, 
+  RefreshCw,
+  ServerCrash
+} from 'lucide-react';
 import './App.css';
 
 // ============= Type Definitions =============
@@ -24,8 +36,7 @@ const App = () => {
   const [simulateDisruption, setSimulateDisruption] = useState(false);
 
   // API URL with fallback to localhost for development
-  const API_BASE_URL =
-    import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const handleStartWorkflow = async () => {
     setLoading(true);
@@ -76,10 +87,10 @@ const App = () => {
   const getStatusColor = (status: string): string => {
     const lowerStatus = status.toLowerCase();
     if (lowerStatus.includes('fulfilled') || lowerStatus.includes('success'))
-      return 'text-green-400';
-    if (lowerStatus.includes('error')) return 'text-red-400';
-    if (lowerStatus.includes('disruption')) return 'text-yellow-400';
-    return 'text-blue-400';
+      return 'text-emerald-400';
+    if (lowerStatus.includes('error')) return 'text-rose-400';
+    if (lowerStatus.includes('disruption')) return 'text-amber-400';
+    return 'text-indigo-400';
   };
 
   const getSystemHealth = (): string => {
@@ -89,131 +100,254 @@ const App = () => {
     return 'Healthy';
   };
 
+  const renderAgentIcon = (agent: string) => {
+    switch (agent) {
+      case 'UI': return <Layers className="w-5 h-5 text-indigo-400" />;
+      case 'Intelligence': return <Cpu className="w-5 h-5 text-emerald-400" />;
+      case 'Orchestration': return <Activity className="w-5 h-5 text-fuchsia-400" />;
+      case 'Compliance': return <CheckCircle2 className="w-5 h-5 text-teal-400" />;
+      default: return <ServerCrash className="w-5 h-5 text-rose-400" />;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-      <header className="border-b border-gray-700 bg-gray-800 px-6 py-6">
-        <h1 className="text-4xl font-bold text-blue-400">
-          🏭 Supply Chain Management System
-        </h1>
-        <p className="mt-2 text-gray-400">
-          AI-Powered Autonomous Workflow with LLM Intelligence
-        </p>
+    <div className="min-h-screen text-slate-100 font-sans pb-16">
+      
+      {/* Premium Header */}
+      <header className="sticky top-0 z-50 glass-panel border-b-0 border-x-0 rounded-none bg-slate-900/80 mb-10 px-6 py-5 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-indigo-500 to-fuchsia-600 rounded-xl shadow-lg ring-1 ring-white/10">
+              <Factory className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-fuchsia-200 tracking-tight">
+                SCM Agentic Workflow
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1 font-medium tracking-wide">
+                AI-Powered Autonomous System with LLM Intelligence
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/80 border border-slate-700/50 text-xs font-medium text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            System Online
+          </div>
+        </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        {/* Controls Section */}
-        <section className="mb-8 space-y-4 rounded-lg border border-gray-700 bg-gray-800 p-6">
-          <h2 className="text-xl font-semibold text-gray-300">Workflow Controls</h2>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <button
-              onClick={handleStartWorkflow}
-              disabled={loading}
-              className={`rounded-lg px-6 py-3 font-semibold transition-all ${
-                loading
-                  ? 'cursor-not-allowed bg-gray-600 text-gray-400'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {loading ? '⏳ Processing...' : '▶️ Start Workflow'}
-            </button>
+      {/* Main Content Dashboard */}
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 space-y-8">
+        
+        {/* Top Control Panel */}
+        <section className="glass-panel p-6 sm:p-8 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 group-hover:bg-indigo-500/20 transition-all duration-700"></div>
+          
+          <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+            <div>
+              <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                <Play className="w-5 h-5 text-indigo-400" /> Control Center
+              </h2>
+              <p className="text-slate-400 text-sm max-w-md leading-relaxed">
+                Initialize the autonomous agent cluster to assess constraints, monitor inventory, and detect real-time transit disruptions.
+              </p>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-900/40 p-2 pl-5 rounded-2xl border border-slate-700/50">
+              <label className="flex items-center gap-3 cursor-pointer group/toggle">
+                <div className="relative flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={simulateDisruption}
+                    onChange={(e) => setSimulateDisruption(e.target.checked)}
+                    disabled={loading}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 group-hover/toggle:ring-2 ring-amber-500/30 transition-all"></div>
+                </div>
+                <span className="text-sm font-medium text-slate-300 group-hover/toggle:text-amber-200 transition-colors">
+                  Inject Simulated Threats
+                </span>
+              </label>
 
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={simulateDisruption}
-                onChange={(e) => setSimulateDisruption(e.target.checked)}
+              <button
+                onClick={handleStartWorkflow}
                 disabled={loading}
-                className="h-4 w-4 rounded bg-gray-700"
-              />
-              <span className="text-gray-300">Simulate Supply Chain Disruption</span>
-            </label>
+                className={`flex items-center gap-2 rounded-xl px-7 py-3.5 font-bold shadow-xl transition-all duration-300 transform outline-none focus:ring-4 ${
+                  loading
+                    ? 'cursor-not-allowed bg-slate-800 text-slate-500 border border-slate-700 scale-95'
+                    : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 focus:ring-indigo-500/30 ring-offset-2 ring-offset-slate-900'
+                }`}
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" /> 
+                    <span>Executing Protocol...</span>
+                  </>
+                ) : (
+                  <>
+                    <Activity className="w-5 h-5" /> 
+                    <span>Initialize Workflow</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </section>
 
-        {/* System Health */}
-        {workflowStatus && (
-          <section className="mb-8 rounded-lg border border-gray-700 bg-gray-800 p-6">
-            <h2 className="text-lg font-semibold text-gray-300">System Health</h2>
-            <div className="mt-4 flex items-center justify-between">
+        {/* Global Error Banner */}
+        {error && (
+          <div className="glass-panel border-rose-500/30 bg-rose-950/30 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-rose-500/20 rounded-full">
+                <AlertTriangle className="w-6 h-6 text-rose-400" />
+              </div>
               <div>
-                <p className="text-sm text-gray-400">Status</p>
-                <p className={`text-2xl font-bold ${getStatusColor(workflowStatus.status)}`}>
-                  {getSystemHealth()}
+                <h3 className="text-rose-200 font-bold">System Failure</h3>
+                <p className="text-rose-300/80 text-sm mt-0.5 break-all">{error}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setError(null)}
+              className="text-rose-400 hover:text-white text-sm bg-rose-900/50 hover:bg-rose-800 px-4 py-2 rounded-lg transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Dynamic Workflow Dashboard */}
+        {workflowStatus && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-500">
+            
+            {/* Health & Metrics Column */}
+            <div className="lg:col-span-1 space-y-6">
+              
+              <div className="glass-card p-6 relative overflow-hidden">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-slate-400 font-semibold text-sm uppercase tracking-wider">Health Status</h3>
+                  <div className={`p-1.5 rounded-full ${workflowStatus.status.includes('Error') ? 'bg-rose-500/20' : workflowStatus.detected_disruptions.length > 0 ? 'bg-amber-500/20' : 'bg-emerald-500/20'}`}>
+                    <Activity className={`w-4 h-4 ${workflowStatus.status.includes('Error') ? 'text-rose-400' : workflowStatus.detected_disruptions.length > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+                  </div>
+                </div>
+                <div className="flex items-end gap-3">
+                  <p className={`text-4xl font-extrabold tracking-tight ${getStatusColor(workflowStatus.status)}`}>
+                    {getSystemHealth()}
+                  </p>
+                  {loading && (
+                    <div className="w-3 h-3 rounded-full bg-indigo-500 animate-pulse-ring mb-2"></div>
+                  )}
+                </div>
+                <p className="text-slate-500 text-sm mt-2 flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block"></span>
+                  State: <span className="text-slate-300 font-medium truncate">{workflowStatus.status}</span>
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-400">Current Phase</p>
-                <p className="text-2xl font-bold text-purple-400">
+
+              <div className="glass-card p-6">
+                 <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-slate-400 font-semibold text-sm uppercase tracking-wider">Current Phase</h3>
+                  <RefreshCw className={`w-4 h-4 text-purple-400 ${loading ? 'animate-spin' : ''}`} />
+                </div>
+                <p className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-fuchsia-400 mb-2">
                   {workflowStatus.current_phase}
                 </p>
+                <div className="w-full bg-slate-800 rounded-full h-1.5 mt-4">
+                  <div className={`h-1.5 rounded-full transition-all duration-1000 ${
+                    workflowStatus.current_phase === 'Compliance' ? 'w-full bg-emerald-500' : 
+                    workflowStatus.current_phase === 'Execution' ? 'w-3/4 bg-fuchsia-500' : 
+                    'w-1/3 bg-indigo-500'
+                  }`}></div>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-400">Inventory</p>
+
+              <div className="glass-card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-slate-400 font-semibold text-sm uppercase tracking-wider">Inventory</h3>
+                  <Box className="w-4 h-4 text-teal-400" />
+                </div>
                 <p className="text-2xl font-bold text-teal-400">
                   {workflowStatus.inventory_status}
                 </p>
               </div>
+              
             </div>
-          </section>
-        )}
 
-        {/* Error Section */}
-        {error && (
-          <section className="mb-8 rounded-lg border border-red-700 bg-red-900/30 p-6">
-            <h2 className="text-lg font-semibold text-red-400">⚠️ Error</h2>
-            <p className="mt-2 text-red-300">{error}</p>
-          </section>
-        )}
-
-        {/* Disruptions Alert */}
-        {workflowStatus && workflowStatus.detected_disruptions.length > 0 && (
-          <section className="mb-8 rounded-lg border border-yellow-700 bg-yellow-900/30 p-6">
-            <h2 className="text-lg font-semibold text-yellow-400">
-              ⚠️ Supply Chain Disruptions Detected
-            </h2>
-            <ul className="mt-4 space-y-2">
-              {workflowStatus.detected_disruptions.map((disruption, idx) => (
-                <li key={idx} className="flex items-center gap-3 text-yellow-300">
-                  <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" />
-                  {disruption}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {/* Execution Log */}
-        {workflowStatus && workflowStatus.audit_trail.length > 0 && (
-          <section className="rounded-lg border border-gray-700 bg-gray-800 p-6">
-            <h2 className="text-lg font-semibold text-gray-300">📋 Execution Log</h2>
-            <div className="mt-4 space-y-3">
-              {workflowStatus.audit_trail.map((entry, idx) => {
-                let agentColor = 'text-gray-400';
-                if (entry.agent === 'UI') agentColor = 'text-blue-400';
-                else if (entry.agent === 'Intelligence') agentColor = 'text-green-400';
-                else if (entry.agent === 'Orchestration') agentColor = 'text-purple-400';
-                else if (entry.agent === 'Compliance') agentColor = 'text-teal-400';
-
-                return (
-                  <div
-                    key={idx}
-                    className="flex gap-4 border-l-2 border-gray-600 pl-4"
-                  >
-                    <div className="flex-shrink-0">
-                      <span className={`font-mono font-semibold ${agentColor}`}>
-                        [{entry.agent}]
-                      </span>
+            {/* Details Column */}
+            <div className="lg:col-span-2 space-y-6 flex flex-col">
+              
+              {/* Disruptions Warning block */}
+              {workflowStatus.detected_disruptions.length > 0 && (
+                <div className="glass-panel border-amber-500/30 bg-amber-950/20 p-6 flex-shrink-0 animate-in slide-in-from-right-8 duration-500">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-amber-500/20 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
                     </div>
-                    <div className="flex-grow">
-                      <p className="text-gray-300">{entry.action}</p>
+                    <h3 className="text-lg font-bold text-amber-300">
+                      Disruptions Detected
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    {workflowStatus.detected_disruptions.map((disruption, idx) => (
+                      <div key={idx} className="bg-amber-900/40 border border-amber-700/50 rounded-lg p-3 flex items-start gap-3">
+                        <span className="relative flex h-3 w-3 mt-1">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                        </span>
+                        <span className="text-amber-100 text-sm font-medium leading-relaxed">{disruption}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Advanced Audit Trail */}
+              {workflowStatus.audit_trail.length > 0 && (
+                <div className="glass-panel p-6 sm:p-8 flex-grow flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between mb-8">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                       Agent Event Matrix
+                    </h2>
+                    <span className="px-3 py-1 bg-slate-800 rounded-full text-xs font-semibold text-slate-400 border border-slate-700 shadow-inner">
+                      {workflowStatus.audit_trail.length} Logs
+                    </span>
+                  </div>
+                  
+                  <div className="relative flex-grow overflow-hidden before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-700 before:to-transparent">
+                    <div className="space-y-8 relative py-4">
+                      {workflowStatus.audit_trail.map((entry, idx) => {
+                        return (
+                          <div
+                            key={idx}
+                            className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-both"
+                            style={{ animationDelay: `${idx * 150}ms` }}
+                          >
+                            <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-slate-900 bg-slate-800 text-slate-500 group-[.is-active]:text-emerald-50 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-transform duration-300 hover:scale-110">
+                               {renderAgentIcon(entry.agent)}
+                            </div>
+                            
+                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] glass-card p-4 hover:border-indigo-500/50 relative">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-bold text-slate-200 text-sm">
+                                  {entry.agent} Controller
+                                </span>
+                                <time className="text-xs font-mono text-slate-500">{entry.timestamp}</time>
+                              </div>
+                              <p className="text-slate-300 text-sm leading-relaxed pt-1">
+                                {entry.action}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              )}
+              
             </div>
-          </section>
+            
+          </div>
         )}
       </main>
     </div>

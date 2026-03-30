@@ -157,6 +157,11 @@ workflow = create_workflow()
 
 # ============= API Endpoints =============
 
+@app.get("/")
+def root():
+    """Root endpoint to verify service is running."""
+    return {"message": "SCM API is running. Access /health for health status."}
+
 @app.get("/health")
 def health_check():
     """Health check endpoint."""

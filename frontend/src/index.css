@@ -1,46 +1,61 @@
-:root {
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@import 'tailwindcss';
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme {
+  --color-primary-500: #6366f1; /* Indigo 500 */
+  --color-primary-600: #4f46e5; /* Indigo 600 */
+  --color-accent-400: #2dd4bf; /* Teal 400 */
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-
-button:hover {
-  border-color: #646cff;
-}
-
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  a:hover {
-    color: #747bff;
+@layer base {
+  :root {
+    background-color: #0f172a; /* Slate 900 */
+    color: #f8fafc; /* Slate 50 */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
-  button {
-    background-color: #f9f9f9;
+
+  body {
+    margin: 0;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    background-attachment: fixed;
   }
+}
+
+/* Custom Glassmorphism Utilities */
+@layer utilities {
+  .glass-panel {
+    @apply bg-slate-800/40 backdrop-blur-md border border-slate-700/50 shadow-xl rounded-2xl;
+  }
+  
+  .glass-card {
+    @apply bg-slate-900/60 backdrop-blur-lg border border-slate-700/60 rounded-xl transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply bg-slate-800/60 border-indigo-500/50 shadow-indigo-500/10 shadow-lg transform -translate-y-1;
+  }
+}
+
+/* Animations */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(99, 102, 241, 0);
+  }
+  100% {
+    transform: scale(0.8);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite cubic-bezier(0.24, 0, 0.38, 1);
 }
