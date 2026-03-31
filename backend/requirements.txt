@@ -8,4 +8,4 @@ pydantic-core
 langchain-groq
 langchain-mistralai
 qdrant-client
-langchain-qdrant
+langchain-qdrant 
