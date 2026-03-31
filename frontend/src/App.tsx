@@ -501,7 +501,7 @@ const App = () => {
                 </div>
                 <div className="flex items-start gap-2 mb-4">
                    <div className="mt-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0"></div>
-                   <p className="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-cyan-300 leading-tight">
+                   <p className="text-sm font-bold text-blue-300 leading-tight">
                      {workflowStatus.live_location}
                    </p>
                 </div>
