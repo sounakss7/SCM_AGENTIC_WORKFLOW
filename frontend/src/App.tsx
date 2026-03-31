@@ -18,7 +18,10 @@ import {
   Settings,
   ShieldCheck,
   Truck,
-  Map
+  Map,
+  DollarSign,
+  MapPin,
+  Search
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -41,6 +44,9 @@ interface WorkflowState {
   optimization_cycles: number;
   detected_disruptions: string[];
   audit_trail: AuditEntry[];
+  cost_savings: string;
+  live_location: string;
+  order_id?: string;
 }
 
 // ============= React Component =============
@@ -50,6 +56,7 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [simulateDisruption, setSimulateDisruption] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [customOrderId, setCustomOrderId] = useState('');
 
   // API URL with fallback to localhost for development
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -66,7 +73,7 @@ const App = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          order_id: `ORD-${Date.now()}`,
+          order_id: customOrderId.trim() || `ORD-${Date.now()}`,
           simulate_disruption: simulateDisruption,
         }),
       });
@@ -92,6 +99,9 @@ const App = () => {
         optimization_cycles: data.state.optimization_cycles || 0,
         detected_disruptions: data.state.detected_disruptions || [],
         audit_trail: data.state.audit_trail || [],
+        cost_savings: data.state.cost_savings || '$0.00',
+        live_location: data.state.live_location || 'Tracking...',
+        order_id: data.order_id || customOrderId.trim() || `ORD-${Date.now()}`,
       });
     } catch (err) {
       const errorMessage =
@@ -305,6 +315,19 @@ const App = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
+              {/* Order ID Tracker Input */}
+              <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 pl-3 rounded-2xl border border-slate-700/50 shadow-inner">
+                 <Search className="w-4 h-4 text-slate-500" />
+                 <input
+                   type="text"
+                   placeholder="Enter Custom Order ID"
+                   value={customOrderId}
+                   onChange={(e) => setCustomOrderId(e.target.value)}
+                   disabled={loading}
+                   className="bg-transparent border-none text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-0 w-44"
+                 />
+              </div>
+
               {/* Export & Log Buttons */}
               {workflowStatus && !loading && (
                 <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
@@ -467,6 +490,30 @@ const App = () => {
                         </span>
                      )}
                    </div>
+                </div>
+              </div>
+
+              {/* Live Tracking & Financial Impact */}
+              <div className="glass-card p-6 border-l-4 border-l-blue-500">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-slate-400 font-semibold text-sm uppercase tracking-wider">Live Tracking</h3>
+                  <MapPin className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="flex items-start gap-2 mb-4">
+                   <div className="mt-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0"></div>
+                   <p className="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-cyan-300 leading-tight">
+                     {workflowStatus.live_location}
+                   </p>
+                </div>
+                
+                <div className="pt-4 border-t border-slate-700/50">
+                   <div className="flex items-center justify-between mb-2">
+                     <span className="text-xs text-slate-400 uppercase font-semibold">Financial Impact</span>
+                     <DollarSign className="w-4 h-4 text-emerald-400" />
+                   </div>
+                   <p className="text-xl font-bold text-emerald-400 tracking-tight">
+                     {workflowStatus.cost_savings}
+                   </p>
                 </div>
               </div>
 

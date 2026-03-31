@@ -146,6 +146,8 @@ class SCMState(TypedDict):
     status: str
     requires_correction: bool
     simulate_disruption: bool
+    cost_savings: str
+    live_location: str
 
 # ============= 5. Agent Nodes (CYCLIC LOOP) =============
 def user_interface_agent(state: SCMState) -> SCMState:
@@ -157,8 +159,11 @@ def user_interface_agent(state: SCMState) -> SCMState:
         state["status"] = "Security Exception"
         state["detected_disruptions"] = ["Malicious Prompt Injection Intercepted"]
         state["requires_correction"] = True
+        state["live_location"] = "Quarantined"
+        state["cost_savings"] = "$0.00"
         AuditLogger.log(state, "UI (Customer Layer)", f"Request blocked due to security alert on Order {state['order_id']}", "Guard Layer")
     else:
+        state["live_location"] = "Customer Intake Portal"
         AuditLogger.log(state, "UI", f"Initial order intake completed. Workflow Health Monitor activated for Order {state['order_id']}.", "Deterministic Engine")
     return state
 
@@ -240,17 +245,22 @@ def orchestration_agent(state: SCMState) -> SCMState:
         state["status"] = "Self-Correction Protocols Active"
         state["route_selected"] = f"Alternative Freight Route Beta-V{cycles}"
         state["inventory_status"] = "Alternative Supplier Pinged"
+        state["live_location"] = "Rerouting via Secondary Hub"
+        state["cost_savings"] = "Calculating Recovery Optimizer..."
         AuditLogger.log(state, "Orchestration", f"Self-Correction Protocol (Cycle {cycles}): Autonomously triggering Alternative Supplier Selection & Rerouting.", "Graph Node Algorithm")
     else:
         if state["detected_disruptions"]:
             state["status"] = "Logistics Rerouting"
             state["route_selected"] = "Optimized Alternative A"
             state["inventory_status"] = "Rerouting Pending"
+            state["live_location"] = "Awaiting Secondary Carrier"
             AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Adjusting default route due to Intelligence flag.", "Graph Node Algorithm")
         else:
             state["status"] = "Order Processing"
             state["route_selected"] = "Standard Maritime Path"
             state["inventory_status"] = "Stock Reserved"
+            state["live_location"] = "Origin Warehouse (Packing Hub)"
+            state["cost_savings"] = "$12.50 (Standard Carrier Match)"
             AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Evaluated inventory status and selected optimal routes/carriers.", "Graph Node Algorithm")
             
     return state
@@ -266,11 +276,21 @@ def external_entities_node(state: SCMState) -> SCMState:
     # Simulate a real external Carrier/Supplier failure if 'simulate_disruption' is true
     if state["simulate_disruption"] and state["optimization_cycles"] < 1:
         state["carrier_status"] = "Booking Rejected (Port Overcapacity)"
+        state["live_location"] = "Port Terminal Dispatch (Rejected)"
+        state["cost_savings"] = "$0.00 (SLA Risk Immediate)"
         state["optimization_cycles"] += 1
         AuditLogger.log(state, "External Nodes", "Carrier Booking Rejected by 3rd party! Feeding failure signal back to Error-Handling Loop...", "Supply Chain Sim")
     else:
         state["carrier_status"] = "Carrier Booking Confirmed"
         state["status"] = "Execution Fulfilled"
+        
+        if state["optimization_cycles"] > 0 or state["detected_disruptions"]:
+            state["live_location"] = "Diverted Transit Route (En Route)"
+            state["cost_savings"] = "$4,250 (SLA Penalty Prevented + Dyn. Rate)"
+        else:
+            state["live_location"] = "Standard Transit Route (En Route)"
+            state["cost_savings"] = "$45.20 (Standard Volume Discount)"
+            
         AuditLogger.log(state, "External Nodes", "Warehouse Picking & Supplier P.O. finalized. Ensuring non-time models are validated.", "Supply Chain Sim")
         
     return state
@@ -348,7 +368,9 @@ async def place_order(request: OrderRequest):
             "audit_trail": [],
             "status": "Processing",
             "requires_correction": False,
-            "simulate_disruption": request.simulate_disruption
+            "simulate_disruption": request.simulate_disruption,
+            "cost_savings": "$0.00 (Calculating...)",
+            "live_location": "System Initiation"
         }
         final_state = workflow.invoke(initial_state)
         return {
@@ -362,7 +384,9 @@ async def place_order(request: OrderRequest):
                 "carrier_status": final_state["carrier_status"],
                 "optimization_cycles": final_state["optimization_cycles"],
                 "detected_disruptions": final_state["detected_disruptions"],
-                "audit_trail": final_state["audit_trail"]
+                "audit_trail": final_state["audit_trail"],
+                "cost_savings": final_state.get("cost_savings", "$0.00"),
+                "live_location": final_state.get("live_location", "Unknown Location")
             }
         }
     except Exception as e:
@@ -377,7 +401,9 @@ async def place_order(request: OrderRequest):
                 "carrier_status": "Failed",
                 "optimization_cycles": 0,
                 "detected_disruptions": [],
-                "audit_trail": [{"timestamp": "now", "agent": "System Exception", "action": str(e), "model_used": "Fatal Crash"}]
+                "audit_trail": [{"timestamp": "now", "agent": "System Exception", "action": str(e), "model_used": "Fatal Crash"}],
+                "cost_savings": "N/A",
+                "live_location": "System Disconnected"
             }
         }
 

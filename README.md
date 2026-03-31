@@ -27,6 +27,8 @@ An advanced, autonomous multi-agent supply chain management system built for the
 - **Multi-LLM Routing:** Intelligently routes decision-making tasks across leading models (Gemini, Groq, MistralAI) for optimized cost and performance.
 - **Real-Time Diagnostic Analytics:** Live frontend visualization of agent health, decision confidence, and workflow metrics.
 - **Automated Reporting:** Instantly generate detailed PDF executive summaries of supply chain execution and AI interventions.
+- **Cost-Saving Live Metrics:** Track and visualize real-time cost efficiency and financial savings dynamically during the inventory process.
+- **Customer Order Tracking:** Users can input their Order ID to receive live tracking updates along with real-time location access.
 
 ---
 
