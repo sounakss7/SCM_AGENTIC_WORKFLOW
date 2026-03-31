@@ -1,8 +1,42 @@
 import os
 import re
 from typing import TypedDict, List
+import sqlite3
+from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# ============= 0. SQLite Database Initialization =============
+def init_db():
+    conn = sqlite3.connect("orders.db", check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS order_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id TEXT,
+            status TEXT,
+            financial_impact TEXT,
+            live_location TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def save_order(order_id, status, financial_impact, live_location):
+    try:
+        conn = sqlite3.connect("orders.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO order_history (order_id, status, financial_impact, live_location, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (order_id, status, financial_impact, live_location, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ DB Save failed: {e}")
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.graph import StateGraph, END
@@ -159,11 +193,11 @@ def user_interface_agent(state: SCMState) -> SCMState:
         state["status"] = "Security Exception"
         state["detected_disruptions"] = ["Malicious Prompt Injection Intercepted"]
         state["requires_correction"] = True
-        state["live_location"] = "Quarantined"
+        state["live_location"] = "System Quarantine"
         state["cost_savings"] = "$0.00"
         AuditLogger.log(state, "UI (Customer Layer)", f"Request blocked due to security alert on Order {state['order_id']}", "Guard Layer")
     else:
-        state["live_location"] = "Customer Intake Portal"
+        state["live_location"] = "Shanghai Distribution Center (Intake)"
         AuditLogger.log(state, "UI", f"Initial order intake completed. Workflow Health Monitor activated for Order {state['order_id']}.", "Deterministic Engine")
     return state
 
@@ -245,7 +279,7 @@ def orchestration_agent(state: SCMState) -> SCMState:
         state["status"] = "Self-Correction Protocols Active"
         state["route_selected"] = f"Alternative Freight Route Beta-V{cycles}"
         state["inventory_status"] = "Alternative Supplier Pinged"
-        state["live_location"] = "Rerouting via Secondary Hub"
+        state["live_location"] = "Diverting: Seattle Port Authority"
         state["cost_savings"] = "Calculating Recovery Optimizer..."
         AuditLogger.log(state, "Orchestration", f"Self-Correction Protocol (Cycle {cycles}): Autonomously triggering Alternative Supplier Selection & Rerouting.", "Graph Node Algorithm")
     else:
@@ -253,13 +287,13 @@ def orchestration_agent(state: SCMState) -> SCMState:
             state["status"] = "Logistics Rerouting"
             state["route_selected"] = "Optimized Alternative A"
             state["inventory_status"] = "Rerouting Pending"
-            state["live_location"] = "Awaiting Secondary Carrier"
+            state["live_location"] = "Awaiting Alternative Carrier (Singapore Hub)"
             AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Adjusting default route due to Intelligence flag.", "Graph Node Algorithm")
         else:
             state["status"] = "Order Processing"
             state["route_selected"] = "Standard Maritime Path"
             state["inventory_status"] = "Stock Reserved"
-            state["live_location"] = "Origin Warehouse (Packing Hub)"
+            state["live_location"] = "Origin: Shenzhen Manufacturing Facility"
             state["cost_savings"] = "$12.50 (Standard Carrier Match)"
             AuditLogger.log(state, "Orchestration", "Logistics Planning completed: Evaluated inventory status and selected optimal routes/carriers.", "Graph Node Algorithm")
             
@@ -276,7 +310,7 @@ def external_entities_node(state: SCMState) -> SCMState:
     # Simulate a real external Carrier/Supplier failure if 'simulate_disruption' is true
     if state["simulate_disruption"] and state["optimization_cycles"] < 1:
         state["carrier_status"] = "Booking Rejected (Port Overcapacity)"
-        state["live_location"] = "Port Terminal Dispatch (Rejected)"
+        state["live_location"] = "Port of Los Angeles (Congested/Rejected)"
         state["cost_savings"] = "$0.00 (SLA Risk Immediate)"
         state["optimization_cycles"] += 1
         AuditLogger.log(state, "External Nodes", "Carrier Booking Rejected by 3rd party! Feeding failure signal back to Error-Handling Loop...", "Supply Chain Sim")
@@ -285,10 +319,10 @@ def external_entities_node(state: SCMState) -> SCMState:
         state["status"] = "Execution Fulfilled"
         
         if state["optimization_cycles"] > 0 or state["detected_disruptions"]:
-            state["live_location"] = "Diverted Transit Route (En Route)"
+            state["live_location"] = "Diverted: Oakland Port Terminal (En Route)"
             state["cost_savings"] = "$4,250 (SLA Penalty Prevented + Dyn. Rate)"
         else:
-            state["live_location"] = "Standard Transit Route (En Route)"
+            state["live_location"] = "Pacific Ocean Transit Route (En Route)"
             state["cost_savings"] = "$45.20 (Standard Volume Discount)"
             
         AuditLogger.log(state, "External Nodes", "Warehouse Picking & Supplier P.O. finalized. Ensuring non-time models are validated.", "Supply Chain Sim")
@@ -373,6 +407,15 @@ async def place_order(request: OrderRequest):
             "live_location": "System Initiation"
         }
         final_state = workflow.invoke(initial_state)
+        
+        # Save to historical database
+        save_order(
+            final_state["order_id"],
+            final_state["status"],
+            final_state.get("cost_savings", "$0.00"),
+            final_state.get("live_location", "Unknown Location")
+        )
+
         return {
             "success": True,
             "order_id": final_state["order_id"],
@@ -406,6 +449,19 @@ async def place_order(request: OrderRequest):
                 "live_location": "System Disconnected"
             }
         }
+
+@app.get("/api/orders_history")
+def get_orders_history():
+    try:
+        conn = sqlite3.connect("orders.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT 20")
+        rows = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return {"success": True, "orders": rows}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

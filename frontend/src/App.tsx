@@ -21,13 +21,23 @@ import {
   Map,
   DollarSign,
   MapPin,
-  Search
+  Search,
+  History
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import './App.css';
 
 // ============= Type Definitions =============
+interface OrderHistoryRow {
+  id: number;
+  order_id: string;
+  status: string;
+  financial_impact: string;
+  live_location: string;
+  timestamp: string;
+}
+
 interface AuditEntry {
   timestamp: string;
   agent: string;
@@ -57,9 +67,29 @@ const App = () => {
   const [simulateDisruption, setSimulateDisruption] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [customOrderId, setCustomOrderId] = useState('');
+  
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [orderHistory, setOrderHistory] = useState<OrderHistoryRow[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // API URL with fallback to localhost for development
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+  const fetchOrderHistory = async () => {
+    setLoadingHistory(true);
+    setIsHistoryModalOpen(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/orders_history`);
+      const data = await res.json();
+      if (data.success && data.orders) {
+        setOrderHistory(data.orders);
+      }
+    } catch (err) {
+      console.error("Failed to fetch order history", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleStartWorkflow = async () => {
     setLoading(true);
@@ -274,6 +304,84 @@ const App = () => {
         </div>
       )}
 
+      {/* Order History Modal */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-[#0A0A10] border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden ring-1 ring-white/10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+              <div className="flex items-center gap-3">
+                <History className="w-5 h-5 text-amber-400" />
+                <h3 className="text-white font-bold tracking-wide">Supply Chain Execution History</h3>
+              </div>
+              <button
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Table Area */}
+            <div className="p-6 overflow-y-auto flex-grow bg-slate-900/40">
+              {loadingHistory ? (
+                <div className="flex items-center justify-center h-40">
+                  <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+                </div>
+              ) : orderHistory.length === 0 ? (
+                <div className="text-center text-slate-500 py-10">
+                  No orders found in database.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-700/50 shadow-inner">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-800 text-xs uppercase text-slate-400 border-b border-slate-700/50">
+                      <tr>
+                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Order ID</th>
+                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Status</th>
+                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Financial Impact</th>
+                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Final Geographic Vector</th>
+                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {orderHistory.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4 font-mono font-bold text-indigo-300 truncate max-w-[120px]">{row.order_id}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${row.status.includes('Error') || row.status.includes('Exception') ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-emerald-400 tracking-tight whitespace-nowrap">{row.financial_impact}</td>
+                          <td className="px-6 py-4 font-medium text-blue-300 bg-slate-900/30 truncate" title={row.live_location}>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-3 h-3 text-blue-500" />
+                              <span className="truncate">{row.live_location}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs text-slate-500 whitespace-nowrap">{row.timestamp}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-slate-900/80 px-6 py-4 border-t border-slate-800 flex justify-end">
+               <button
+                 onClick={() => setIsHistoryModalOpen(false)}
+                 className="text-sm font-bold text-white bg-slate-800 hover:bg-slate-700 px-6 py-2.5 rounded-xl transition-colors border border-slate-700 shadow-lg"
+               >
+                 Close
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Premium Header */}
       <header className="sticky top-0 z-40 glass-panel border-b-0 border-x-0 rounded-none bg-slate-900/80 mb-10 px-6 py-5 shadow-2xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -329,26 +437,36 @@ const App = () => {
               </div>
 
               {/* Export & Log Buttons */}
-              {workflowStatus && !loading && (
-                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
-                  <button
-                    onClick={() => setIsLogModalOpen(true)}
-                    className="flex items-center gap-2 rounded-xl px-5 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
-                    title="View Raw Agent Logs"
-                  >
-                    <TerminalSquare className="w-4 h-4 text-emerald-400" />
-                    <span className="text-sm font-bold">Terminal Logs</span>
-                  </button>
-                  <button
-                    onClick={generatePDFReport}
-                    className="flex items-center gap-2 rounded-xl px-5 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
-                    title="Download PDF Report"
-                  >
-                    <FileText className="w-4 h-4 text-fuchsia-400" />
-                    <span className="text-sm font-bold">Export PDF</span>
-                  </button>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
+                <button
+                  onClick={fetchOrderHistory}
+                  className="flex items-center gap-2 rounded-xl px-4 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
+                  title="View Past Orders"
+                >
+                  <History className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm font-bold">Order History</span>
+                </button>
+                {workflowStatus && !loading && (
+                  <>
+                    <button
+                      onClick={() => setIsLogModalOpen(true)}
+                      className="flex items-center gap-2 rounded-xl px-4 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
+                      title="View Raw Agent Logs"
+                    >
+                      <TerminalSquare className="w-4 h-4 text-emerald-400" />
+                      <span className="text-sm font-bold">Terminal Logs</span>
+                    </button>
+                    <button
+                      onClick={generatePDFReport}
+                      className="flex items-center gap-2 rounded-xl px-4 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all hover:-translate-y-0.5 shadow-lg"
+                      title="Download PDF Report"
+                    >
+                      <FileText className="w-4 h-4 text-fuchsia-400" />
+                      <span className="text-sm font-bold">Export PDF</span>
+                    </button>
+                  </>
+                )}
+              </div>
 
               {/* Main Workflow Execute Box */}
               <div className="flex items-center gap-5 bg-slate-900/60 p-2 pl-5 rounded-2xl border border-slate-700/50 shadow-inner">
