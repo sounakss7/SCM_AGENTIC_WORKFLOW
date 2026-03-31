@@ -493,28 +493,71 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Live Tracking & Financial Impact */}
-              <div className="glass-card p-6 border-l-4 border-l-blue-500">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-slate-400 font-semibold text-sm uppercase tracking-wider">Live Tracking</h3>
-                  <MapPin className="w-4 h-4 text-blue-400" />
-                </div>
-                <div className="flex items-start gap-2 mb-4">
-                   <div className="mt-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0"></div>
-                   <p className="text-sm font-bold text-blue-300 leading-tight">
-                     {workflowStatus.live_location}
-                   </p>
-                </div>
-                
-                <div className="pt-4 border-t border-slate-700/50">
-                   <div className="flex items-center justify-between mb-2">
-                     <span className="text-xs text-slate-400 uppercase font-semibold">Financial Impact</span>
-                     <DollarSign className="w-4 h-4 text-emerald-400" />
-                   </div>
-                   <p className="text-xl font-bold text-emerald-400 tracking-tight">
-                     {workflowStatus.cost_savings}
-                   </p>
-                </div>
+              {/* Premium Live Tracking Widget */}
+              <div className="glass-card overflow-hidden border border-slate-700/50 relative group">
+                 <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/10 blur-3xl rounded-full transition-all duration-700 translate-x-1/2 -translate-y-1/2 group-hover:bg-blue-500/20"></div>
+                 
+                 <div className="p-6 relative z-10">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-500/20 rounded-lg shadow-inner border border-blue-500/20">
+                          <MapPin className="w-4 h-4 text-blue-400" />
+                        </div>
+                        <h3 className="text-slate-100 font-bold tracking-wide">Live GPS Telemetry</h3>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> Target Lock
+                      </span>
+                    </div>
+
+                    {/* Dynamic Map/Timeline Visualization */}
+                    <div className="relative h-20 w-full bg-slate-900/60 rounded-xl mb-5 overflow-hidden border border-slate-700/50 shadow-inner flex items-center px-4">
+                       {/* Background Map Grid Pattern */}
+                       <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)", backgroundSize: "16px 16px" }}></div>
+                       
+                       {/* Dotted route path */}
+                       <div className="absolute top-1/2 left-8 right-8 h-[2px] border-t-2 border-dashed border-slate-700/80 -translate-y-1/2"></div>
+                       
+                       {/* Route Nodes */}
+                       <div className="absolute top-1/2 left-[10%] w-3 h-3 rounded-full bg-slate-600 border-2 border-slate-800 -translate-y-1/2 -translate-x-1/2 z-10"></div>
+                       <div className="absolute top-1/2 left-[50%] w-3 h-3 rounded-full bg-slate-600 border-2 border-slate-800 -translate-y-1/2 -translate-x-1/2 z-10"></div>
+                       <div className="absolute top-1/2 left-[90%] w-3 h-3 rounded-full bg-slate-600 border-2 border-slate-800 -translate-y-1/2 -translate-x-1/2 z-10"></div>
+
+                       {/* Pulsing Tracker Dot */}
+                       <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col items-center transition-all duration-[1500ms] ease-out z-20 ${
+                         workflowStatus.live_location.includes('System') || workflowStatus.live_location.includes('Intake') ? 'left-[0%]' : 
+                         workflowStatus.live_location.includes('Origin') || workflowStatus.live_location.includes('Packing') ? 'left-[10%]' : 
+                         workflowStatus.live_location.includes('Reject') || workflowStatus.live_location.includes('Port') || workflowStatus.live_location.includes('Secondary') ? 'left-[50%]' : 
+                         'left-[90%]'
+                       }`}>
+                          <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center -translate-x-1/2">
+                             <div className="absolute w-full h-full rounded-full border border-blue-400/30 animate-ping"></div>
+                             <div className="w-3.5 h-3.5 bg-blue-400 rounded-full shadow-[0_0_15px_rgba(96,165,250,0.9)] z-10"></div>
+                          </div>
+                       </div>
+                    </div>
+
+                    <p className="text-sm font-semibold text-slate-400 flex items-center gap-2 bg-slate-900/40 p-3 rounded-lg border border-slate-800/50">
+                      <span className="text-xs uppercase tracking-wider text-slate-500">Vector:</span>
+                      <span className="text-blue-300 drop-shadow-sm font-bold tracking-wide truncate">{workflowStatus.live_location}</span>
+                    </p>
+                 </div>
+                 
+                 {/* Premium Financial Footer */}
+                 <div className="bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900 px-6 py-4 border-t border-slate-800 flex justify-between items-center relative overflow-hidden">
+                    <div className="absolute left-0 bottom-0 top-0 w-1 bg-gradient-to-b from-emerald-400 to-teal-600"></div>
+                    <div className="flex items-center gap-4 relative z-10">
+                       <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 shadow-inner">
+                         <DollarSign className="w-5 h-5 text-emerald-400" />
+                       </div>
+                       <div>
+                          <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-0.5">Financial Impact Delta</p>
+                          <p className="text-xl sm:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-300 tracking-tight drop-shadow-sm">
+                            {workflowStatus.cost_savings}
+                          </p>
+                       </div>
+                    </div>
+                 </div>
               </div>
 
             </div>
