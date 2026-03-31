@@ -6,7 +6,6 @@
 An advanced, autonomous multi-agent supply chain management system built for the ET Gen AI Hackathon. This platform leverages a state-of-the-art AI architecture to orchestrate supply chain operations, detect disruptions in real-time, and execute autonomous recovery strategies.
 
 🚀 **Live Demo:** [https://scm-agentic-workflow.vercel.app/](https://scm-workflow-live.vercel.app/)  
-🛠️ **AI Studio App:** [View in AI Studio](https://ai.studio/apps/46a41076-c9cb-4228-a29f-f532c51c784b)
 
 ## 📌 Table of Contents
 
