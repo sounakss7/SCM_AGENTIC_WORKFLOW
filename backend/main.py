@@ -5,29 +5,36 @@ import sqlite3
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI
+import tempfile
 
 # ============= 0. SQLite Database Initialization =============
+# Use the OS temp directory so it works securely on Vercel Serverless (which is read-only otherwise)
+DB_PATH = os.path.join(tempfile.gettempdir(), "orders.db")
+
 def init_db():
-    conn = sqlite3.connect("orders.db", check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS order_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id TEXT,
-            status TEXT,
-            financial_impact TEXT,
-            live_location TEXT,
-            timestamp TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS order_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT,
+                status TEXT,
+                financial_impact TEXT,
+                live_location TEXT,
+                timestamp TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Initial DB setup failed: {e}")
 
 init_db()
 
 def save_order(order_id, status, financial_impact, live_location):
     try:
-        conn = sqlite3.connect("orders.db")
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO order_history (order_id, status, financial_impact, live_location, timestamp) VALUES (?, ?, ?, ?, ?)",
@@ -453,7 +460,7 @@ async def place_order(request: OrderRequest):
 @app.get("/api/orders_history")
 def get_orders_history():
     try:
-        conn = sqlite3.connect("orders.db")
+        conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT 20")
