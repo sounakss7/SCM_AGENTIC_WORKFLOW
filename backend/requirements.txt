@@ -9,3 +9,6 @@ langchain-groq
 langchain-mistralai
 qdrant-client
 langchain-qdrant 
+streamlit
+pymysql
+cryptography
