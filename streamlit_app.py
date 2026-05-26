@@ -21,7 +21,8 @@ from database.db_manager import (
     update_order_status,
     get_last_ai_report,
     save_ai_report,
-    get_mysql_connection
+    get_mysql_connection,
+    insert_new_customer
 )
 from agents.workflow import SCMState, scm_workflow_graph, orchestration_edge_router
 from agents.nodes import (
@@ -453,7 +454,30 @@ with tab_control:
                 else:
                     st.info("No orders currently active. Create an order above to test.")
         else:
-            st.error("❌ Customer ID not found. Enter a valid ID like `CUST-1001` or seed the database in the sidebar.")
+            st.error(f"❌ Customer ID '{cust_id_input}' not found in the database.")
+            st.markdown("### 👤 Register New SCM Customer")
+            st.markdown("Complete the form below to add this customer to the database.")
+            
+            with st.form("register_customer_form"):
+                reg_cust_id = st.text_input("Customer ID", value=cust_id_input, disabled=True)
+                reg_name = st.text_input("Full Name", placeholder="e.g. John Doe")
+                reg_company = st.text_input("Company Name", placeholder="e.g. Apex Industries")
+                reg_email = st.text_input("Email Address", placeholder="e.g. john@apex.com")
+                reg_address = st.text_area("Primary Shipping Address", placeholder="e.g. 100 Main St, Austin, TX 78701")
+                reg_tier = st.selectbox("SLA Priority Tier", ["VIP", "Premium", "Standard"])
+                
+                submitted_reg = st.form_submit_button("💾 Register & Save Customer")
+                if submitted_reg:
+                    if not reg_name or not reg_address:
+                        st.error("Please fill in the Full Name and Shipping Address fields.")
+                    else:
+                        success, msg = insert_new_customer(cust_id_input, reg_name, reg_email, reg_company, reg_address, reg_tier)
+                        if success:
+                            st.success(msg)
+                            time.sleep(1.0)
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
 # -----------------
 # TAB 2: DECISION AUDIT TRAIL LOGS

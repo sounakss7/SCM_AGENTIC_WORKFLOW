@@ -400,3 +400,23 @@ def save_ai_report(customer_id, report_text, model_used):
         st.error(f"Error saving AI report: {e}")
     finally:
         conn.close()
+
+def insert_new_customer(customer_id, name, email, company, address, tier="Standard"):
+    conn, cursor = get_db_cursor()
+    try:
+        if st.session_state.use_sqlite:
+            cursor.execute("""
+                INSERT INTO customers (customer_id, name, email, company, address, tier)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (customer_id, name, email, company, address, tier))
+        else:
+            cursor.execute("""
+                INSERT INTO customers (customer_id, name, email, company, address, tier)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (customer_id, name, email, company, address, tier))
+        conn.commit()
+        return True, f"Customer {customer_id} registered successfully."
+    except Exception as e:
+        return False, f"Failed to register customer: {e}"
+    finally:
+        conn.close()
