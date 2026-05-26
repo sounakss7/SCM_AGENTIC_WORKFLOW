@@ -2,6 +2,10 @@ import streamlit as st
 import os
 import time
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load Environment Variables (.env)
+load_dotenv()
 
 # Modular SCM imports
 from database.db_manager import (
@@ -369,93 +373,75 @@ with tab_control:
                         
                         with st.spinner("Agentic SCM Workflow processing..."):
                             st.session_state.workflow_history = []
-                            current_state = initial_state
+                            current_state = dict(initial_state)
                             
-                            # Step 1: UI Agent
-                            current_state = user_interface_agent(current_state)
-                            save_order_history_record(
-                                current_state["order_id"], current_state["current_phase"],
-                                "UI (Customer Layer)", current_state["agent_thoughts"]["ui_agent"],
-                                "Deterministic Engine", "$0.00", current_state["live_location"]
-                            )
-                            st.session_state.workflow_history.append(dict(current_state))
-                            timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                            time.sleep(0.8)
-                            
-                            # Step 2: Intel Agent
-                            current_state = supply_chain_intelligence_agent(current_state)
-                            _, model_used_name = get_llm_client(prefer=st.session_state.routing_preference)
-                            save_order_history_record(
-                                current_state["order_id"], current_state["current_phase"],
-                                "Supply Chain Intelligence", current_state["agent_thoughts"]["intelligence_agent"],
-                                model_used_name if current_state["detected_disruptions"] else "Deterministic Engine",
-                                "$0.00", current_state["live_location"]
-                            )
-                            st.session_state.workflow_history.append(dict(current_state))
-                            timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                            time.sleep(1.0)
-                            
-                            # Step 3: Compliance Agent
-                            current_state = compliance_agent(current_state)
-                            save_order_history_record(
-                                current_state["order_id"], current_state["current_phase"],
-                                "Verification & Compliance", current_state["agent_thoughts"]["compliance_agent"],
-                                "Regulatory Sandbox Ruleset", "$0.00", current_state["live_location"]
-                            )
-                            st.session_state.workflow_history.append(dict(current_state))
-                            timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                            time.sleep(0.6)
-                            
-                            # Step 4: Orchestration Agent
-                            current_state = orchestration_agent(current_state)
-                            save_order_history_record(
-                                current_state["order_id"], current_state["current_phase"],
-                                "Process Orchestration", current_state["agent_thoughts"]["orchestration_agent"],
-                                "Graph Node Algorithm", current_state["cost_savings"], current_state["live_location"]
-                            )
-                            st.session_state.workflow_history.append(dict(current_state))
-                            timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                            time.sleep(0.8)
-                            
-                            # Step 5: External Entities
-                            current_state = external_entities_node(current_state)
-                            save_order_history_record(
-                                current_state["order_id"], current_state["current_phase"],
-                                "External Entities Node", current_state["agent_thoughts"]["external_entities"],
-                                "Supply Chain Sim Port Engine", current_state["cost_savings"], current_state["live_location"]
-                            )
-                            st.session_state.workflow_history.append(dict(current_state))
-                            timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                            time.sleep(0.8)
-                            
-                            # Router conditional check
-                            route_decision = orchestration_edge_router(current_state)
-                            if route_decision == "loop_to_orchestration":
-                                st.warning("🔄 Disruption Event Detected: Loopback Self-Correction Protocol Triggered!")
-                                time.sleep(0.8)
-                                
-                                # Run Orchestration Agent again (Cycle 1)
-                                current_state = orchestration_agent(current_state)
-                                save_order_history_record(
-                                    current_state["order_id"], current_state["current_phase"] + " (Correction)",
-                                    "Process Orchestration", current_state["agent_thoughts"]["orchestration_agent"],
-                                    "Graph Node Algorithm", "Calculating...", current_state["live_location"]
-                                )
-                                st.session_state.workflow_history.append(dict(current_state))
-                                timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                                time.sleep(1.0)
-                                
-                                # Run External Entities again (Confirmed alternative)
-                                current_state = external_entities_node(current_state)
-                                save_order_history_record(
-                                    current_state["order_id"], current_state["current_phase"] + " (Final Booking)",
-                                    "External Entities Node", current_state["agent_thoughts"]["external_entities"],
-                                    "Supply Chain Sim Port Engine", current_state["cost_savings"], current_state["live_location"]
-                                )
-                                st.session_state.workflow_history.append(dict(current_state))
-                                timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                                time.sleep(0.8)
-                                
+                            # Stream from compiled LangGraph StateGraph
+                            for event in scm_workflow_graph.stream(initial_state):
+                                for node_name, state_updates in event.items():
+                                    current_state.update(state_updates)
+                                    
+                                    # Select details for ledger logging
+                                    agent_display_name = ""
+                                    phase_name = current_state["current_phase"]
+                                    action_text = ""
+                                    model_used = "Deterministic Engine"
+                                    
+                                    if node_name == "ui_agent":
+                                        agent_display_name = "UI (Customer Layer)"
+                                        action_text = current_state["agent_thoughts"].get("ui_agent", "")
+                                    elif node_name == "intelligence_agent":
+                                        agent_display_name = "Supply Chain Intelligence"
+                                        action_text = current_state["agent_thoughts"].get("intelligence_agent", "")
+                                        _, model_used = get_llm_client(prefer=st.session_state.routing_preference)
+                                        if not current_state["detected_disruptions"]:
+                                            model_used = "Deterministic Engine"
+                                    elif node_name == "compliance_agent":
+                                        agent_display_name = "Verification & Compliance"
+                                        action_text = current_state["agent_thoughts"].get("compliance_agent", "")
+                                        model_used = "Regulatory Sandbox Ruleset"
+                                    elif node_name == "orchestration_agent":
+                                        agent_display_name = "Process Orchestration"
+                                        action_text = current_state["agent_thoughts"].get("orchestration_agent", "")
+                                        model_used = "Graph Node Algorithm"
+                                        if current_state["optimization_cycles"] > 0:
+                                            phase_name += " (Correction)"
+                                    elif node_name == "external_entities":
+                                        agent_display_name = "External Entities Node"
+                                        action_text = current_state["agent_thoughts"].get("external_entities", "")
+                                        model_used = "Supply Chain Sim Port Engine"
+                                        if current_state["optimization_cycles"] > 0 and current_state["carrier_status"] != "Booking Rejected (Port Overcapacity/Strike)":
+                                            phase_name += " (Final Booking)"
+                                            
+                                    # Log each agent node execution to DB
+                                    save_order_history_record(
+                                        current_state["order_id"],
+                                        phase_name,
+                                        agent_display_name,
+                                        action_text,
+                                        model_used,
+                                        current_state["cost_savings"],
+                                        current_state["live_location"]
+                                    )
+                                    
+                                    # Append state for UI timeline rendering
+                                    st.session_state.workflow_history.append(dict(current_state))
+                                    timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
+                                    metrics_placeholder.markdown(render_metrics_html(current_state), unsafe_allow_html=True)
+                                    
+                                    # Add custom visual delays between agent steps
+                                    if node_name == "ui_agent":
+                                        time.sleep(0.8)
+                                    elif node_name == "intelligence_agent":
+                                        time.sleep(1.0)
+                                    elif node_name == "compliance_agent":
+                                        time.sleep(0.6)
+                                    elif node_name == "orchestration_agent":
+                                        time.sleep(0.8)
+                                    elif node_name == "external_entities":
+                                        if current_state["carrier_status"] == "Booking Rejected (Port Overcapacity/Strike)":
+                                            st.warning("🔄 Disruption Event Detected: Loopback Self-Correction Protocol Triggered!")
+                                        time.sleep(0.8)
+                                        
                             update_order_status(current_state["order_id"], current_state["status"])
                             
                         st.success(f"SCM Workflow assessment complete for Order {selected_order_id}!")
