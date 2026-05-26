@@ -1,104 +1,57 @@
-# 🌐 Agentic Supply Chain Workflow
+# 🌐 Autonomous Supply Chain Intelligence Engine (SCM)
 
-[![Status](https://img.shields.io/badge/Status-Active-success.svg)]()
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
-
-An advanced, autonomous multi-agent supply chain management system built for the ET Gen AI Hackathon. This platform leverages a state-of-the-art AI architecture to orchestrate supply chain operations, detect disruptions in real-time, and execute autonomous recovery strategies.
-
-🚀 **Live Demo:** [https://scm-agentic-workflow.vercel.app/](https://scm-workflow-live.vercel.app/)  
-
-## 📌 Table of Contents
-
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Core Components](#-core-components)
-- [Tech Stack](#-tech-stack)
-- [Business Impact](#-business-impact)
-- [Local Development Setup](#-local-development-setup)
-- [Contributors](#-contributors)
+An advanced, autonomous multi-agent supply chain management system. This platform leverages a state-of-the-art AI agent architecture built with **LangGraph** and **Streamlit** to orchestrate supply chain operations, detect disruptions in real-time, and execute autonomous recovery strategies.
 
 ---
 
 ## ✨ Features
 
-- **Multi-Agent Orchestration:** Utilizes a StateGraph architecture to coordinate multiple specialized AI agents.
-- **Dynamic Disruption Mitigation:** Employs Qdrant vector databases for historical memory to identify and resolve external disruptions (e.g., weather, port congestion) autonomously.
-- **Multi-LLM Routing:** Intelligently routes decision-making tasks across leading models (Gemini, Groq, MistralAI) for optimized cost and performance.
-- **Real-Time Diagnostic Analytics:** Live frontend visualization of agent health, decision confidence, and workflow metrics.
-- **Automated Reporting:** Instantly generate detailed PDF executive summaries of supply chain execution and AI interventions.
-- **Cost-Saving Live Metrics:** Track and visualize real-time cost efficiency and financial savings dynamically during the inventory process.
-- **Customer Order Tracking:** Users can input their Order ID to receive live tracking updates along with real-time location access.
+- **Multi-Agent Orchestration:** Utilizes a stateful `StateGraph` architecture to coordinate multiple specialized AI agents.
+- **Dynamic Disruption Mitigation:** Employs regional weather and strike alert analyzers to identify external threats and trigger dynamic rerouting.
+- **Self-Correction & Resiliency Loop:** If a carrier booking is rejected due to port overcapacity or strikes, the engine automatically triggers alternative supplier selection and port diversions, saving thousands in SLA breach penalties.
+- **Multi-LLM Routing:** Intelligently routes decision-making tasks across leading models (**Google Gemini 2.5 Flash** and **Groq Mixtral**) for optimized performance and cost.
+- **Persistent Storage Layer**: Connects directly to a **MySQL Database** (or local SQLite sandbox) to log order states, carrier coordinates, and step-by-step agent thoughts.
+- **Executive AI Analytics Reports**: Instantly compile, display, and download high-fidelity supply chain health and ROI performance reports.
+- **Input & Output Safety Guards**: Integrated regex inspectors (`InputGuard` & `OutputGuard`) prevent SQL injections, prompt injections, or critical log leaks.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Multi-Agent Architecture
 
-The system operates across three core lifecycle phases: **Planning**, **Execution**, and **Monitoring & Optimization**. 
+```mermaid
+graph TD
+    Node1[👤 Order Intake Agent] -->|InputGuard| Node2[🧠 SCM Intelligence Agent]
+    Node2 -->|Multi-LLM + Memory| Node3[🛡️ Compliance Agent]
+    Node3 --> Node4[⚙️ Process Orchestration Agent]
+    Node4 --> Node5[🚢 External Carrier Node]
+    
+    Node5 -->|Rejection Loop| Node4
+    Node5 -->|Success| END([End: Execution Fulfilled])
+```
 
-<p align="center">
-  <img src="SCM_Architecture_Workflow.png" alt="Agentic Supply Chain Architecture Workflow" width="800">
-</p>
-
----
-
-## 🧠 Core Components & Agent Roles
-
-### 1. 👤 User Interface (Customer Layer)
-* Handles the initial order intake.
-* Provides a real-time **Workflow Health Monitor** for immediate feedback.
-* Displays final order fulfillment and reporting data.
-
-### 2. 🌐 Supply Chain Intelligence Agent
-* **Order Assessment:** Conducts initial demand analysis and disruption screening.
-* **Continuous Monitoring:** Tracks real-time performance data and route efficiency.
-* **Disruption Detection:** Identifies external threats and triggers **Autonomous Optimization**.
-
-### 3. ⚙️ Process Orchestration Agent
-* **Logistics Planning:** Manages inventory, routes, and carrier selection.
-* **Autonomous Execution:** Oversees active fulfillment.
-* **Self-Correction Protocols:** The core of system resilience. If an external error occurs (e.g., carrier failure), it autonomously triggers alternative supplier selection or rerouting.
-
-### 4. 🛡️ Verification & Compliance Agent
-* Runs parallel to the planning phase to ensure sourcing and routing meet regulatory frameworks.
-* Locks in an immutable **Decision Audit Trail** prior to execution.
+1. **User Interface / Intake Agent**: Validates order details and runs payload safety guards.
+2. **Supply Chain Intelligence Agent**: Analyzes global disruptions and checks historical vector memory for solutions using Gemini/Groq.
+3. **Verification & Compliance Agent**: Validates tariff classifications and international compliance directives, locking down the transaction audit ledger.
+4. **Process Orchestration Agent**: Selects standard carriers. Under disruption, triggers dynamic alternate port/supplier selection.
+5. **External Entities simulation**: Simulates third-party logistics dispatchers. Rejects bookings under simulated overcapacity to trigger the self-correction loop.
 
 ---
 
 ## 💻 Tech Stack
 
-### Frontend
-- **Framework:** React 19 / Vite
-- **Styling:** TailwindCSS 4.0
-- **Utilities:** Lucide React (Icons), jsPDF (Auto-Report Generation)
-
-### Backend
-- **Framework:** FastAPI / Python
-- **AI/Agents:** LangGraph, LangChain (Google GenAI, Groq, MistralAI)
-- **Vector Database:** Qdrant Client
-
----
-
-## 📊 Business Impact Model
-
-To quantify the value of this workflow, we modeled the impact on a mid-to-large enterprise processing **10,000 orders per month**. 
-
-| Metric | Manual Processing | Agentic Automation | Improvement |
-|--------|-------------------|--------------------|-------------|
-| **Avg. Time per Order** | 45 minutes | 2 minutes | **95% Reduction** |
-| **Labor Cost/Month** | $225,000 | Minimal Oversight | **~ $214,980 Saved** |
-| **SLA Breach Rate** | 2% (200 orders) | < 0.1% | **$95,000 Recovered** |
-
-**Total Estimated Value:** Combined operational savings and penalty prevention of **$309,980 per month** (over **$3.7 Million annually**).
+- **UI Framework:** Streamlit (Python)
+- **Agent Framework:** LangGraph, LangChain
+- **LLM Models:** Google Gemini 2.5 Flash, Groq Mixtral-8x7b
+- **Database Engine:** MySQL Server (with local SQLite sandbox fallback)
+- **Styling:** Custom Vanilla CSS for glassmorphism, responsive metrics, and dynamic vertical timelines.
 
 ---
 
 ## 🛠️ Local Development Setup
 
-Follow these steps to run the application locally.
-
 ### Prerequisites
-- Node.js (v18+)
-- Python (3.10+)
+- Python 3.10+
+- MySQL Server (optional, sandbox SQLite is built-in)
 
 ### 1. Clone the Repository
 ```bash
@@ -106,39 +59,31 @@ git clone https://github.com/sounakss7/SCM_AGENTIC_WORKFLOW.git
 cd SCM_AGENTIC_WORKFLOW
 ```
 
-### 2. Backend Setup
+### 2. Install Dependencies
 ```bash
-cd backend
-python -m venv venv
-# On Windows: venv\Scripts\activate
-# On Mac/Linux: source venv/bin/activate
-
 pip install -r requirements.txt
 ```
-*Create a `.env` file in the `backend` directory based on `.env.example` to include your API keys (Gemini, Groq, etc).*
 
-Run the backend server:
+### 3. Run the Application
 ```bash
-# Depending on your backend entry point:
-uvicorn main:app --reload
+python -m streamlit run streamlit_app.py
 ```
+Open **`http://localhost:8501`** (or the port specified in terminal) in your browser.
 
-### 3. Frontend Setup
-Open a new terminal and navigate to the frontend directory:
-```bash
-cd frontend
-npm install
-npm run dev
-```
+---
 
-The application will now be running on `http://localhost:5173`.
+## 💾 Database Schema
+
+The application manages the following tables in your MySQL/SQLite database:
+* **`customers`**: Client profiles, contact logs, and priority SLA Tiers (`VIP`, `Premium`, `Standard`).
+* **`orders`**: Active cargo bookings, items, values, and tracking states.
+* **`order_history`**: The immutable ledger containing timestamps, agent thoughts, actions, and locations.
+* **`ai_reports`**: Saved executive analytics summaries.
 
 ---
 
 ## 👨‍💻 Contributors
 
 * **Sounak Sarkar** - *Lead Developer & AI Architect* - [@sounakss7](https://github.com/sounakss7)
-
----
 
 *Built with ❤️ for the ET Gen AI Hackathon*
