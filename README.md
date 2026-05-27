@@ -1,49 +1,61 @@
 # 🌐 Autonomous Supply Chain Intelligence Engine (SCM)
 
-An advanced, autonomous multi-agent supply chain management system. This platform leverages a state-of-the-art AI agent architecture built with **LangGraph** and **Streamlit** to orchestrate supply chain operations, detect disruptions in real-time, and execute autonomous recovery strategies.
+An advanced, autonomous multi-agent supply chain management (SCM) orchestration system. This application leverages a stateful, cyclic workflow built with **LangGraph** and **Streamlit** to coordinate logistics operations, analyze real-time shipping threats, execute autonomous recovery protocols, and maintain a persistent decision audit trail.
 
 ---
 
-## ✨ Features
+## ✨ System Features
 
-- **Multi-Agent Orchestration:** Utilizes a stateful `StateGraph` architecture to coordinate multiple specialized AI agents.
-- **Dynamic Disruption Mitigation:** Employs regional weather and strike alert analyzers to identify external threats and trigger dynamic rerouting.
-- **Self-Correction & Resiliency Loop:** If a carrier booking is rejected due to port overcapacity or strikes, the engine automatically triggers alternative supplier selection and port diversions, saving thousands in SLA breach penalties.
-- **Multi-LLM Routing:** Intelligently routes decision-making tasks across leading models (**Google Gemini 2.5 Flash** and **Groq Mixtral**) for optimized performance and cost.
-- **Persistent Storage Layer**: Connects directly to a **MySQL Database** (or local SQLite sandbox) to log order states, carrier coordinates, and step-by-step agent thoughts.
-- **Executive AI Analytics Reports**: Instantly compile, display, and download high-fidelity supply chain health and ROI performance reports.
-- **Input & Output Safety Guards**: Integrated regex inspectors (`InputGuard` & `OutputGuard`) prevent SQL injections, prompt injections, or critical log leaks.
+- **Stateful Multi-Agent Network**: Built using a compiled cyclic `StateGraph` that manages order state, locations, routing optimizations, and carrier bookings dynamically.
+- **Self-Correction & Resiliency Loop**: If carrier booking fails due to port congestion, union strikes, or overcapacity, the engine dynamically initiates a loopback cycle to recalculate optimal alternate routes (e.g., diverting cargo from the Port of Los Angeles to the Seattle Port Authority), preventing expensive SLA breaches.
+- **On-Demand Customer Registration**: Enter any non-seeded Customer ID (e.g., `CUST-9999`) in the profiler to immediately reveal an integrated registration form. Register new clients directly to your MySQL/SQLite database in real-time.
+- **Multi-LLM Routing Engine**: Intelligently routes intelligence tasks and summary analytics across **Google Gemini 2.5 Flash** (recommended) and **Groq Mixtral-8x7b** depending on user credentials and performance preference.
+- **Hybrid Storage Layer**: Supports connections to a live **MySQL Database** with automatic schema initialization, fallback-capable with zero configuration to a **local SQLite sandbox database (`local_orders.db`)**.
+- **Immutable SCM Ledger Audit Trail**: Logs every single routing decision, LLM response, dynamic cost savings, safety guard check, and carrier GPS coordinate with high-fidelity timestamps.
+- **Executive AI Analytics Reports**: Instantly compile, review, and download professional, markdown-formatted supply chain health and return-on-investment (ROI) reports.
+- **Input & Output Safety Guards**: Integrated payload filters (`InputGuard` and `OutputGuard`) prevent prompt injections, SQL injections, and log exposure.
+- **Premium Glassmorphism Theme**: Glowing cards, customizable sidebar controls, live metrics, and a dynamic vertical SVG/HTML timeline showing agent execution steps in real-time.
 
 ---
 
-## 🏗️ Multi-Agent Architecture
+## 🏗️ Multi-Agent Architecture & Flow
 
 ```mermaid
 graph TD
-    Node1[👤 Order Intake Agent] -->|InputGuard| Node2[🧠 SCM Intelligence Agent]
-    Node2 -->|Multi-LLM + Memory| Node3[🛡️ Compliance Agent]
-    Node3 --> Node4[⚙️ Process Orchestration Agent]
-    Node4 --> Node5[🚢 External Carrier Node]
+    Node1[👤 Order Intake / UI Agent] -->|InputGuard Verification| Node2[🧠 SCM Intelligence Agent]
+    Node2 -->|Dynamic Disruption Analysis| Node3[🛡️ Verification & Compliance Agent]
+    Node3 -->|Tariff Classification & Rules| Node4[⚙️ Process Orchestration Agent]
+    Node4 -->|Carrier Selection & Routing| Node5[🚢 External Carrier Node]
     
-    Node5 -->|Rejection Loop| Node4
-    Node5 -->|Success| END([End: Execution Fulfilled])
+    Node5 -->|Booking Rejected / Port Strike| Node4
+    Node5 -->|Success / Fulfilled| END([🏁 Fulfilled & Saved])
 ```
 
-1. **User Interface / Intake Agent**: Validates order details and runs payload safety guards.
-2. **Supply Chain Intelligence Agent**: Analyzes global disruptions and checks historical vector memory for solutions using Gemini/Groq.
-3. **Verification & Compliance Agent**: Validates tariff classifications and international compliance directives, locking down the transaction audit ledger.
-4. **Process Orchestration Agent**: Selects standard carriers. Under disruption, triggers dynamic alternate port/supplier selection.
-5. **External Entities simulation**: Simulates third-party logistics dispatchers. Rejects bookings under simulated overcapacity to trigger the self-correction loop.
+1. **User Interface / Intake Agent**: Validates order details, checks parameters, and enforces system input guards.
+2. **Supply Chain Intelligence Agent**: Evaluates real-time external risks (weather events, labor strikes, overcapacity) utilizing Gemini or Groq models.
+3. **Verification & Compliance Agent**: Validates trade compliance, classifies tariffs, and locks ledger rules.
+4. **Process Orchestration Agent**: Selects standard carriers and calculates costs. Under disruption, triggers dynamic alternate port/supplier selection.
+5. **External Carrier Node**: Simulates logistics dispatchers. Rejects bookings under simulated overcapacity to test and trigger the self-correction loop.
+
+---
+
+## 💾 Database Schema & Structure
+
+The system automatically manages and seeds the following tables:
+* **`customers`**: Customer profiles, email directories, corporate metadata, and priority SLA Tiers (`VIP`, `Premium`, `Standard`).
+* **`orders`**: Active and historic shipping status logs, product information, item quantity, and total transaction values.
+* **`order_history`**: The immutable ledger storing timestamps, agent thoughts, cost savings, live shipping locations, and the specific AI model engines utilized.
+* **`ai_reports`**: Executive performance and ROI markdown summaries compiled by the SCM AI engine.
 
 ---
 
 ## 💻 Tech Stack
 
-- **UI Framework:** Streamlit (Python)
-- **Agent Framework:** LangGraph, LangChain
-- **LLM Models:** Google Gemini 2.5 Flash, Groq Mixtral-8x7b
-- **Database Engine:** MySQL Server (with local SQLite sandbox fallback)
-- **Styling:** Custom Vanilla CSS for glassmorphism, responsive metrics, and dynamic vertical timelines.
+- **UI Framework**: Streamlit (Python 3.10+)
+- **Orchestration**: LangGraph, LangChain Core
+- **AI Models**: Google Gemini 2.5 Flash, Groq Mixtral-8x7b
+- **Database Engine**: MySQL Server (with local SQLite sandbox fallback)
+- **Styling**: Premium Glassmorphism theme utilizing vanilla custom CSS injections.
 
 ---
 
@@ -51,34 +63,31 @@ graph TD
 
 ### Prerequisites
 - Python 3.10+
-- MySQL Server (optional, sandbox SQLite is built-in)
+- MySQL Server (optional, SQLite Sandbox is configured automatically if MySQL is offline)
 
-### 1. Clone the Repository
+### 1. Clone the Codebase
 ```bash
 git clone https://github.com/sounakss7/SCM_AGENTIC_WORKFLOW.git
 cd SCM_AGENTIC_WORKFLOW
 ```
 
-### 2. Install Dependencies
+### 2. Install Required Packages
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Application
+### 3. Setup Environment Variables
+Create a `.env` file in the root directory:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+### 4. Launch the Dashboard
 ```bash
 python -m streamlit run streamlit_app.py
 ```
-Open **`http://localhost:8501`** (or the port specified in terminal) in your browser.
-
----
-
-## 💾 Database Schema
-
-The application manages the following tables in your MySQL/SQLite database:
-* **`customers`**: Client profiles, contact logs, and priority SLA Tiers (`VIP`, `Premium`, `Standard`).
-* **`orders`**: Active cargo bookings, items, values, and tracking states.
-* **`order_history`**: The immutable ledger containing timestamps, agent thoughts, actions, and locations.
-* **`ai_reports`**: Saved executive analytics summaries.
+Open **`http://localhost:8501`** (or the port output in your terminal) in your browser.
 
 ---
 
