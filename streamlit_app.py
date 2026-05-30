@@ -95,7 +95,7 @@ if not st.session_state.db_initialized:
 # 3. SIDEBAR CONFIGURATION
 # ==========================================
 with st.sidebar:
-    st.image("https://img.icons8.com/color/120/000000/supply-chain.png", width=65)
+    st.image("ui/scm_logo.png", width=65)
     st.title("SCM Agent Control")
     st.markdown("Configure SCM Multi-Agent network parameters and storage layers.")
     
