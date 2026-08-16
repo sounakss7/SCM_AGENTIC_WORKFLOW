@@ -1,17 +1,48 @@
+import os
 import streamlit as st
 import pymysql
 import sqlite3
 from datetime import datetime
 
+def is_using_sqlite() -> bool:
+    """Check whether SQLite mode is active with safe fallbacks."""
+    try:
+        if hasattr(st, "session_state") and "use_sqlite" in st.session_state:
+            return bool(st.session_state.use_sqlite)
+    except Exception:
+        pass
+    return os.getenv("USE_SQLITE", "true").lower() in ("true", "1", "yes")
+
+def get_mysql_config():
+    """Retrieve MySQL connection configuration with session_state and env fallbacks."""
+    try:
+        if hasattr(st, "session_state"):
+            host = st.session_state.get("mysql_host", os.getenv("MYSQL_HOST", "localhost"))
+            port = int(st.session_state.get("mysql_port", os.getenv("MYSQL_PORT", "3306")))
+            user = st.session_state.get("mysql_user", os.getenv("MYSQL_USER", "root"))
+            password = st.session_state.get("mysql_password", os.getenv("MYSQL_PASSWORD", ""))
+            database = st.session_state.get("mysql_database", os.getenv("MYSQL_DATABASE", "scm_agentic_db"))
+            return host, port, user, password, database
+    except Exception:
+        pass
+    return (
+        os.getenv("MYSQL_HOST", "localhost"),
+        int(os.getenv("MYSQL_PORT", "3306")),
+        os.getenv("MYSQL_USER", "root"),
+        os.getenv("MYSQL_PASSWORD", ""),
+        os.getenv("MYSQL_DATABASE", "scm_agentic_db")
+    )
+
 # Connection helper
 def get_mysql_connection():
+    host, port, user, password, database = get_mysql_config()
     try:
         return pymysql.connect(
-            host=st.session_state.mysql_host,
-            port=int(st.session_state.mysql_port),
-            user=st.session_state.mysql_user,
-            password=st.session_state.mysql_password,
-            database=st.session_state.mysql_database,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=database,
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
@@ -20,7 +51,7 @@ def get_mysql_connection():
 
 def get_db_cursor():
     """Returns database connection and cursor, falling back to SQLite if MySQL is disabled/unconfigured"""
-    if st.session_state.use_sqlite:
+    if is_using_sqlite():
         conn = sqlite3.connect("local_orders.db", check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn, conn.cursor()
@@ -45,7 +76,7 @@ def test_mysql_server(host, port, user, password):
 
 def init_database():
     """Initializes tables in either MySQL or SQLite depending on configuration"""
-    if st.session_state.use_sqlite:
+    if is_using_sqlite():
         conn = sqlite3.connect("local_orders.db")
         cursor = conn.cursor()
         
@@ -102,17 +133,18 @@ def init_database():
         conn.close()
     else:
         # MySQL Initialization
+        host, port, user, password, database = get_mysql_config()
         # First, connect without DB to create DB if it doesn't exist
         conn = pymysql.connect(
-            host=st.session_state.mysql_host,
-            port=int(st.session_state.mysql_port),
-            user=st.session_state.mysql_user,
-            password=st.session_state.mysql_password,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
             charset='utf8mb4'
         )
         try:
             with conn.cursor() as cursor:
-                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {st.session_state.mysql_database}")
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database}")
             conn.commit()
         finally:
             conn.close()
@@ -124,20 +156,20 @@ def init_database():
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS customers (
                         customer_id VARCHAR(50) PRIMARY KEY,
-                        name VARCHAR(100) NOT NULL,
-                        email VARCHAR(100),
-                        company VARCHAR(100),
+                        name VARCHAR(255) NOT NULL,
+                        email VARCHAR(255),
+                        company VARCHAR(255),
                         address TEXT,
-                        tier VARCHAR(20) DEFAULT 'Standard'
+                        tier VARCHAR(50) DEFAULT 'Standard'
                     )
                 """)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS orders (
                         order_id VARCHAR(50) PRIMARY KEY,
                         customer_id VARCHAR(50),
-                        product_name VARCHAR(100) NOT NULL,
+                        product_name VARCHAR(255) NOT NULL,
                         quantity INT NOT NULL,
-                        total_price DECIMAL(10, 2) NOT NULL,
+                        total_price DECIMAL(12, 2) NOT NULL,
                         status VARCHAR(50) DEFAULT 'Processing',
                         order_date DATETIME DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
@@ -147,12 +179,12 @@ def init_database():
                     CREATE TABLE IF NOT EXISTS order_history (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         order_id VARCHAR(50),
-                        phase VARCHAR(100),
-                        agent_name VARCHAR(100),
+                        phase VARCHAR(255),
+                        agent_name VARCHAR(255),
                         action TEXT,
-                        model_used VARCHAR(50),
-                        cost_savings VARCHAR(50),
-                        live_location VARCHAR(100),
+                        model_used VARCHAR(100),
+                        cost_savings VARCHAR(255),
+                        live_location VARCHAR(255),
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
@@ -161,7 +193,7 @@ def init_database():
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         customer_id VARCHAR(50),
                         report_text LONGTEXT,
-                        model_used VARCHAR(50),
+                        model_used VARCHAR(100),
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
                     )
@@ -176,7 +208,7 @@ def seed_database():
     conn, cursor = get_db_cursor()
     try:
         # Check if empty
-        if st.session_state.use_sqlite:
+        if is_using_sqlite():
             cursor.execute("SELECT COUNT(*) as count FROM customers")
             count = cursor.fetchone()[0]
         else:
@@ -202,7 +234,7 @@ def seed_database():
             history_records = [
                 # ORD-5001 History
                 ('ORD-5001', 'Order Intake Phase', 'UI (Customer Layer)', 'Order ORD-5001 successfully submitted by VIP Customer Alex Rivera.', 'Deterministic Engine', '$0.00', 'Shenzhen Manufacturing Facility', '2026-05-19 10:05:00'),
-                ('ORD-5001', 'Order Assessment Phase', 'Supply Chain Intelligence', 'Assessment complete: Inventory available. Sourcing from Shenzhen plant.', 'Gemini 3.5 Flash', '$0.00', 'Shenzhen Manufacturing Facility', '2026-05-19 10:06:00'),
+                ('ORD-5001', 'Order Assessment Phase', 'Supply Chain Intelligence', 'Assessment complete: Inventory available. Sourcing from Shenzhen plant.', 'Gemini 2.5 Flash', '$0.00', 'Shenzhen Manufacturing Facility', '2026-05-19 10:06:00'),
                 ('ORD-5001', 'Regulatory Sandbox Verification', 'Verification & Compliance', 'Regulatory review passed. Customs classification verified.', 'Deterministic Engine', '$0.00', 'Shenzhen Manufacturing Facility', '2026-05-19 10:07:00'),
                 ('ORD-5001', 'Logistics Planning Phase', 'Process Orchestration', 'Logistics plan generated: Shenzhen -> Shanghai -> San Jose. Maritime carrier booked.', 'Deterministic Engine', '$250.00 (Standard Carrier volume discount)', 'Shanghai Distribution Center', '2026-05-19 10:08:00'),
                 ('ORD-5001', 'Autonomous Execution Phase', 'External Entities Node', 'Customs cleared in USA. Order delivered to TechCorp San Jose HQ.', 'Deterministic Engine', '$250.00', 'San Jose, CA (Delivered)', '2026-05-20 17:30:00'),
@@ -217,12 +249,12 @@ def seed_database():
             ]
             
             ai_reports = [
-                ('CUST-1001', '### Executive Supply Chain Report for TechCorp Industries\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 1 (`ORD-5002` - Processing)\n* **Completed Orders:** 1 (`ORD-5001` - Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nTechCorp’s supply chain is highly resilient. Recent shipments from Shenzhen to San Jose were completed within 36 hours utilizing high-speed ocean corridors. The current order `ORD-5002` is progressing normally through the Shanghai Distribution Center.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $250.00 (Standard Carrier Volume Discount).\n* **Potential Optimization:** Upgrading `ORD-5002` to air cargo is not required unless inventory thresholds fall below 5 units. SCM Agent recommends maintaining standard routing.', 'Gemini 3.5 Flash', '2026-05-21 11:30:00'),
+                ('CUST-1001', '### Executive Supply Chain Report for TechCorp Industries\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 1 (`ORD-5002` - Processing)\n* **Completed Orders:** 1 (`ORD-5001` - Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nTechCorp’s supply chain is highly resilient. Recent shipments from Shenzhen to San Jose were completed within 36 hours utilizing high-speed ocean corridors. The current order `ORD-5002` is progressing normally through the Shanghai Distribution Center.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $250.00 (Standard Carrier Volume Discount).\n* **Potential Optimization:** Upgrading `ORD-5002` to air cargo is not required unless inventory thresholds fall below 5 units. SCM Agent recommends maintaining standard routing.', 'Gemini 2.5 Flash', '2026-05-21 11:30:00'),
                 ('CUST-1002', '### Executive Supply Chain Report for Global Logistics Corp\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 0\n* **Completed Orders:** 1 (`ORD-5003` - Rerouted & Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nGlobal Logistics Corp faced a severe disruption risk with `ORD-5003` due to a port strike at the Port of Los Angeles. The SCM agent autonomously identified the disruption and executed alternative logistics routing.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $12,450.00 (SLA Penalty Avoided by Diverting to Seattle Port).\n* **Potential Optimization:** Agent recommends keeping Seattle Port Authority as a primary alternative routing option for Q3 2026 due to anticipated union negotiations at LA Port.', 'Groq (Mixtral 8x7b)', '2026-05-21 11:45:00')
             ]
             
             # Executing insertions
-            if st.session_state.use_sqlite:
+            if is_using_sqlite():
                 cursor.executemany("INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?)", customers)
                 cursor.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)", orders)
                 cursor.executemany("INSERT INTO order_history (order_id, phase, agent_name, action, model_used, cost_savings, live_location, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", history_records)
@@ -244,69 +276,79 @@ def seed_database():
 
 # Helper DB Queries
 def get_customer(customer_id):
+    if not customer_id:
+        return None
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
-            cursor.execute("SELECT * FROM customers WHERE customer_id = ?", (customer_id,))
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM customers WHERE UPPER(customer_id) = UPPER(?)", (customer_id.strip(),))
             res = cursor.fetchone()
             return dict(res) if res else None
         else:
-            cursor.execute("SELECT * FROM customers WHERE customer_id = %s", (customer_id,))
+            cursor.execute("SELECT * FROM customers WHERE UPPER(customer_id) = UPPER(%s)", (customer_id.strip(),))
             res = cursor.fetchone()
             return res
     except Exception as e:
-        st.error(f"Error querying customer: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error querying customer: {e}")
         return None
     finally:
         conn.close()
 
 def get_orders_by_customer(customer_id):
+    if not customer_id:
+        return []
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
-            cursor.execute("SELECT * FROM orders WHERE customer_id = ? ORDER BY order_date DESC", (customer_id,))
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM orders WHERE UPPER(customer_id) = UPPER(?) ORDER BY order_date DESC", (customer_id.strip(),))
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
         else:
-            cursor.execute("SELECT * FROM orders WHERE customer_id = %s ORDER BY order_date DESC", (customer_id,))
+            cursor.execute("SELECT * FROM orders WHERE UPPER(customer_id) = UPPER(%s) ORDER BY order_date DESC", (customer_id.strip(),))
             rows = cursor.fetchall()
             return rows
     except Exception as e:
-        st.error(f"Error querying orders: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error querying orders: {e}")
         return []
     finally:
         conn.close()
 
 def get_order_history(order_id):
+    if not order_id:
+        return []
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
-            cursor.execute("SELECT * FROM order_history WHERE order_id = ? ORDER BY timestamp ASC", (order_id,))
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM order_history WHERE order_id = ? ORDER BY timestamp ASC", (order_id.strip(),))
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
         else:
-            cursor.execute("SELECT * FROM order_history WHERE order_id = %s ORDER BY timestamp ASC", (order_id,))
+            cursor.execute("SELECT * FROM order_history WHERE order_id = %s ORDER BY timestamp ASC", (order_id.strip(),))
             rows = cursor.fetchall()
             return rows
     except Exception as e:
-        st.error(f"Error querying order history: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error querying order history: {e}")
         return []
     finally:
         conn.close()
 
-def get_all_order_history():
+def get_all_order_history(limit=50):
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
-            cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT 50")
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT ?", (limit,))
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
         else:
-            cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT 50")
+            cursor.execute("SELECT * FROM order_history ORDER BY id DESC LIMIT %s", (limit,))
             rows = cursor.fetchall()
             return rows
     except Exception as e:
-        st.error(f"Error querying all logs: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error querying all logs: {e}")
         return []
     finally:
         conn.close()
@@ -315,7 +357,7 @@ def save_order_history_record(order_id, phase, agent_name, action, model_used, c
     conn, cursor = get_db_cursor()
     try:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if st.session_state.use_sqlite:
+        if is_using_sqlite():
             cursor.execute("""
                 INSERT INTO order_history (order_id, phase, agent_name, action, model_used, cost_savings, live_location, timestamp)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -335,7 +377,7 @@ def insert_new_order(order_id, customer_id, product_name, quantity, total_price,
     conn, cursor = get_db_cursor()
     try:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if st.session_state.use_sqlite:
+        if is_using_sqlite():
             cursor.execute("""
                 INSERT INTO orders (order_id, customer_id, product_name, quantity, total_price, status, order_date)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -347,14 +389,15 @@ def insert_new_order(order_id, customer_id, product_name, quantity, total_price,
             """, (order_id, customer_id, product_name, quantity, total_price, status, now_str))
         conn.commit()
     except Exception as e:
-        st.error(f"Error inserting order: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error inserting order: {e}")
     finally:
         conn.close()
 
 def update_order_status(order_id, status):
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
+        if is_using_sqlite():
             cursor.execute("UPDATE orders SET status = ? WHERE order_id = ?", (status, order_id))
         else:
             cursor.execute("UPDATE orders SET status = %s WHERE order_id = %s", (status, order_id))
@@ -365,18 +408,21 @@ def update_order_status(order_id, status):
         conn.close()
 
 def get_last_ai_report(customer_id):
+    if not customer_id:
+        return None
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
-            cursor.execute("SELECT * FROM ai_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", (customer_id,))
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM ai_reports WHERE UPPER(customer_id) = UPPER(?) ORDER BY id DESC LIMIT 1", (customer_id.strip(),))
             res = cursor.fetchone()
             return dict(res) if res else None
         else:
-            cursor.execute("SELECT * FROM ai_reports WHERE customer_id = %s ORDER BY id DESC LIMIT 1", (customer_id,))
+            cursor.execute("SELECT * FROM ai_reports WHERE UPPER(customer_id) = UPPER(%s) ORDER BY id DESC LIMIT 1", (customer_id.strip(),))
             res = cursor.fetchone()
             return res
     except Exception as e:
-        st.error(f"Error reading AI report: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error reading AI report: {e}")
         return None
     finally:
         conn.close()
@@ -385,7 +431,7 @@ def save_ai_report(customer_id, report_text, model_used):
     conn, cursor = get_db_cursor()
     try:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if st.session_state.use_sqlite:
+        if is_using_sqlite():
             cursor.execute("""
                 INSERT INTO ai_reports (customer_id, report_text, model_used, created_at)
                 VALUES (?, ?, ?, ?)
@@ -397,26 +443,29 @@ def save_ai_report(customer_id, report_text, model_used):
             """, (customer_id, report_text, model_used, now_str))
         conn.commit()
     except Exception as e:
-        st.error(f"Error saving AI report: {e}")
+        if hasattr(st, "error"):
+            st.error(f"Error saving AI report: {e}")
     finally:
         conn.close()
 
 def insert_new_customer(customer_id, name, email, company, address, tier="Standard"):
     conn, cursor = get_db_cursor()
     try:
-        if st.session_state.use_sqlite:
+        clean_id = customer_id.strip().upper()
+        if is_using_sqlite():
             cursor.execute("""
                 INSERT INTO customers (customer_id, name, email, company, address, tier)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (customer_id, name, email, company, address, tier))
+            """, (clean_id, name, email, company, address, tier))
         else:
             cursor.execute("""
                 INSERT INTO customers (customer_id, name, email, company, address, tier)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (customer_id, name, email, company, address, tier))
+            """, (clean_id, name, email, company, address, tier))
         conn.commit()
-        return True, f"Customer {customer_id} registered successfully."
+        return True, f"Customer {clean_id} registered successfully."
     except Exception as e:
         return False, f"Failed to register customer: {e}"
     finally:
         conn.close()
+

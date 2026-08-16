@@ -352,7 +352,7 @@ with tab_control:
                         initial_state: SCMState = {
                             "order_id": selected_order_id,
                             "customer_id": customer['customer_id'],
-                            "customer_tier": customer['tier'],
+                            "customer_tier": customer.get('tier', 'Standard'),
                             "current_phase": "Initializing",
                             "inventory_status": "Checking",
                             "route_selected": "Pending Evaluation",
@@ -383,34 +383,35 @@ with tab_control:
                                     
                                     # Select details for ledger logging
                                     agent_display_name = ""
-                                    phase_name = current_state["current_phase"]
+                                    phase_name = current_state.get("current_phase", "SCM Execution")
                                     action_text = ""
                                     model_used = "Deterministic Engine"
                                     
+                                    agent_thoughts = current_state.get("agent_thoughts", {})
                                     if node_name == "ui_agent":
                                         agent_display_name = "UI (Customer Layer)"
-                                        action_text = current_state["agent_thoughts"].get("ui_agent", "")
+                                        action_text = agent_thoughts.get("ui_agent", "")
                                     elif node_name == "intelligence_agent":
                                         agent_display_name = "Supply Chain Intelligence"
-                                        action_text = current_state["agent_thoughts"].get("intelligence_agent", "")
-                                        _, model_used = get_llm_client(prefer=st.session_state.routing_preference)
-                                        if not current_state["detected_disruptions"]:
+                                        action_text = agent_thoughts.get("intelligence_agent", "")
+                                        _, model_used = get_llm_client()
+                                        if not current_state.get("detected_disruptions"):
                                             model_used = "Deterministic Engine"
                                     elif node_name == "compliance_agent":
                                         agent_display_name = "Verification & Compliance"
-                                        action_text = current_state["agent_thoughts"].get("compliance_agent", "")
+                                        action_text = agent_thoughts.get("compliance_agent", "")
                                         model_used = "Regulatory Sandbox Ruleset"
                                     elif node_name == "orchestration_agent":
                                         agent_display_name = "Process Orchestration"
-                                        action_text = current_state["agent_thoughts"].get("orchestration_agent", "")
+                                        action_text = agent_thoughts.get("orchestration_agent", "")
                                         model_used = "Graph Node Algorithm"
-                                        if current_state["optimization_cycles"] > 0:
+                                        if current_state.get("optimization_cycles", 0) > 0:
                                             phase_name += " (Correction)"
                                     elif node_name == "external_entities":
                                         agent_display_name = "External Entities Node"
-                                        action_text = current_state["agent_thoughts"].get("external_entities", "")
+                                        action_text = agent_thoughts.get("external_entities", "")
                                         model_used = "Supply Chain Sim Port Engine"
-                                        if current_state["optimization_cycles"] > 0 and current_state["carrier_status"] != "Booking Rejected (Port Overcapacity/Strike)":
+                                        if current_state.get("optimization_cycles", 0) > 0 and current_state.get("carrier_status") != "Booking Rejected (Port Overcapacity/Strike)":
                                             phase_name += " (Final Booking)"
                                             
                                     # Log each agent node execution to DB
@@ -420,8 +421,8 @@ with tab_control:
                                         agent_display_name,
                                         action_text,
                                         model_used,
-                                        current_state["cost_savings"],
-                                        current_state["live_location"]
+                                        current_state.get("cost_savings", "$0.00"),
+                                        current_state.get("live_location", "Origin Point")
                                     )
                                     
                                     # Append state for UI timeline rendering
@@ -439,13 +440,16 @@ with tab_control:
                                     elif node_name == "orchestration_agent":
                                         time.sleep(0.8)
                                     elif node_name == "external_entities":
-                                        if current_state["carrier_status"] == "Booking Rejected (Port Overcapacity/Strike)":
+                                        if current_state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)":
                                             st.warning("🔄 Disruption Event Detected: Loopback Self-Correction Protocol Triggered!")
                                         time.sleep(0.8)
                                         
                             update_order_status(current_state["order_id"], current_state["status"])
                             
-                        st.success(f"SCM Workflow assessment complete for Order {selected_order_id}!")
+                        if current_state.get("status") == "Security Exception":
+                            st.error(f"🚨 SCM Security Exception: Order {selected_order_id} flagged and quarantined by Security Guard Layer.")
+                        else:
+                            st.success(f"SCM Workflow assessment complete for Order {selected_order_id}!")
                         
                         # Render metrics and timeline
                         metrics_placeholder.markdown(render_metrics_html(current_state), unsafe_allow_html=True)
@@ -459,7 +463,7 @@ with tab_control:
             st.markdown("Complete the form below to add this customer to the database.")
             
             with st.form("register_customer_form"):
-                reg_cust_id = st.text_input("Customer ID", value=cust_id_input, disabled=True)
+                reg_cust_id = st.text_input("Customer ID", value=cust_id_input.strip().upper(), disabled=True)
                 reg_name = st.text_input("Full Name", placeholder="e.g. John Doe")
                 reg_company = st.text_input("Company Name", placeholder="e.g. Apex Industries")
                 reg_email = st.text_input("Email Address", placeholder="e.g. john@apex.com")
@@ -471,13 +475,14 @@ with tab_control:
                     if not reg_name or not reg_address:
                         st.error("Please fill in the Full Name and Shipping Address fields.")
                     else:
-                        success, msg = insert_new_customer(cust_id_input, reg_name, reg_email, reg_company, reg_address, reg_tier)
+                        success, msg = insert_new_customer(cust_id_input.strip().upper(), reg_name, reg_email, reg_company, reg_address, reg_tier)
                         if success:
                             st.success(msg)
                             time.sleep(1.0)
                             st.rerun()
                         else:
                             st.error(msg)
+
 
 # -----------------
 # TAB 2: DECISION AUDIT TRAIL LOGS

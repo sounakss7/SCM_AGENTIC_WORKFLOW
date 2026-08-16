@@ -250,14 +250,24 @@ DARK_THEME_CSS = """
 """
 
 def render_timeline_html(history):
+    if not history:
+        return "<div class='timeline-container'><div class='timeline-item'><div class='timeline-title'>No active history records</div></div></div>"
     timeline_html = "<div class='timeline-container'>"
     for idx, step in enumerate(history):
+        if not isinstance(step, dict):
+            continue
         is_last = (idx == len(history) - 1)
+        carrier_status = step.get("carrier_status", "")
+        live_loc = step.get("live_location", "Origin Point")
+        current_phase = step.get("current_phase", "Processing Phase")
+        agent_thoughts = step.get("agent_thoughts", {})
+        if not isinstance(agent_thoughts, dict):
+            agent_thoughts = {}
         
         # Select timeline classes
         if is_last:
             status_class = "active"
-        elif step.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)":
+        elif carrier_status == "Booking Rejected (Port Overcapacity/Strike)":
             status_class = "failed"
         else:
             status_class = "completed"
@@ -268,31 +278,31 @@ def render_timeline_html(history):
         # Fetch appropriate thoughts
         if idx == 0:
             agent_name = "👤 User Interface / Order Intake Agent"
-            thought = step["agent_thoughts"].get("ui_agent", "")
+            thought = agent_thoughts.get("ui_agent", "")
         elif idx == 1:
             agent_name = "🧠 Supply Chain Intelligence Agent"
-            thought = step["agent_thoughts"].get("intelligence_agent", "")
+            thought = agent_thoughts.get("intelligence_agent", "")
         elif idx == 2:
             agent_name = "🛡️ Verification & Compliance Agent"
-            thought = step["agent_thoughts"].get("compliance_agent", "")
+            thought = agent_thoughts.get("compliance_agent", "")
         elif idx == 3:
             agent_name = "⚙️ Process Orchestration Agent"
-            thought = step["agent_thoughts"].get("orchestration_agent", "")
+            thought = agent_thoughts.get("orchestration_agent", "")
         elif idx == 4:
             agent_name = "🚢 External Entities / Carrier Logistics Node"
-            thought = step["agent_thoughts"].get("external_entities", "")
+            thought = agent_thoughts.get("external_entities", "")
         elif idx == 5:
             agent_name = "🔄 Process Orchestration (Dynamic Route Correction)"
-            thought = step["agent_thoughts"].get("orchestration_agent", "")
+            thought = agent_thoughts.get("orchestration_agent", "")
         elif idx == 6:
             agent_name = "🚢 External Carrier Logistics (Rerouted Gate Confirmed)"
-            thought = step["agent_thoughts"].get("external_entities", "")
+            thought = agent_thoughts.get("external_entities", "")
         else:
-            agent_name = f"SCM Node ({step['current_phase']})"
+            agent_name = f"SCM Node ({current_phase})"
             thought = "Processing SCM state parameters."
             
-        badge_color = "success" if "Delivered" in step['live_location'] or "Intake" in step['live_location'] else "warning"
-        if "Congested" in step['live_location'] or "Quarantine" in step['live_location']:
+        badge_color = "success" if ("Delivered" in live_loc or "Intake" in live_loc) else "warning"
+        if "Congested" in live_loc or "Quarantine" in live_loc or "Rejected" in live_loc:
             badge_color = "error"
             
         formatted_thought = thought.replace('\n', '<br>')
@@ -301,8 +311,8 @@ def render_timeline_html(history):
             <div class="timeline-item {status_class}">
                 <div class="timeline-title">{agent_name}</div>
                 <div class="timeline-meta">
-                    <span>📍 Location: <span class="badge badge-{badge_color}">{step['live_location']}</span></span>
-                    <span>🔑 Routing Node: {step['current_phase']}</span>
+                    <span>📍 Location: <span class="badge badge-{badge_color}">{live_loc}</span></span>
+                    <span>🔑 Routing Node: {current_phase}</span>
                 </div>
                 <div class="timeline-content">{formatted_thought}</div>
             </div>
@@ -311,11 +321,12 @@ def render_timeline_html(history):
     return timeline_html
 
 def render_metrics_html(state):
-    # Status badges
-    status_label = state['status']
-    savings = state['cost_savings']
-    cycles = state['optimization_cycles']
-    sla_risk = "< 0.1%" if state['status'] == "Execution Fulfilled" else "100%"
+    if not isinstance(state, dict):
+        state = {}
+    status_label = state.get('status', 'Standby')
+    savings = state.get('cost_savings', '$0.00')
+    cycles = state.get('optimization_cycles', 0)
+    sla_risk = "< 0.1%" if status_label == "Execution Fulfilled" else ("100%" if status_label == "Security Exception" else "Moderate")
     
     metrics_html = f"""
         <div class="metric-grid">
@@ -338,3 +349,4 @@ def render_metrics_html(state):
         </div>
     """
     return metrics_html
+

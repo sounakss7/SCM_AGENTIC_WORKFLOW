@@ -26,8 +26,13 @@ class SCMState(TypedDict):
     live_location: str
     agent_thoughts: Dict[str, str]
 
+def ui_edge_router(state: SCMState) -> str:
+    if state.get("status") == "Security Exception":
+        return "end"
+    return "intelligence_agent"
+
 def orchestration_edge_router(state: SCMState) -> str:
-    if state["status"] == "Security Exception":
+    if state.get("status") == "Security Exception":
         return "end"
     if state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)":
         return "loop_to_orchestration"
@@ -44,7 +49,14 @@ def build_scm_workflow():
     
     workflow.set_entry_point("ui_agent")
     
-    workflow.add_edge("ui_agent", "intelligence_agent")
+    workflow.add_conditional_edges(
+        "ui_agent",
+        ui_edge_router,
+        {
+            "intelligence_agent": "intelligence_agent",
+            "end": END
+        }
+    )
     workflow.add_edge("intelligence_agent", "compliance_agent")
     workflow.add_edge("compliance_agent", "orchestration_agent")
     workflow.add_edge("orchestration_agent", "external_entities")
@@ -61,3 +73,4 @@ def build_scm_workflow():
     return workflow.compile()
 
 scm_workflow_graph = build_scm_workflow()
+

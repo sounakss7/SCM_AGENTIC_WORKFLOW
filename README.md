@@ -1,119 +1,270 @@
+<div align="center">
+
 # 🌐 Autonomous Supply Chain Intelligence Engine (SCM)
 
-An advanced, autonomous multi-agent supply chain management (SCM) orchestration system. This application leverages a stateful, cyclic workflow built with **LangGraph** and **Streamlit** to coordinate logistics operations, analyze real-time shipping threats, execute autonomous recovery protocols, and maintain a persistent decision audit trail.
+**Enterprise-Grade Autonomous Multi-Agent Logistics Orchestration & Self-Healing Supply Chain Network**
+
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange.svg?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Google Gemini](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Groq](https://img.shields.io/badge/Inference-Groq%20Mixtral-F55036.svg?logo=fastapi&logoColor=white)](https://groq.com/)
+[![Database](https://img.shields.io/badge/Database-MySQL%20%7C%20SQLite-00758F.svg?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+<br/>
+
+![SCM Architecture Workflow](SCM_Architecture_Workflow.png)
+
+</div>
 
 ---
 
-## ✨ System Features
+## 📌 Executive Summary
 
-- **Stateful Multi-Agent Network**: Built using a compiled cyclic `StateGraph` that manages order state, locations, routing optimizations, and carrier bookings dynamically.
-- **Self-Correction & Resiliency Loop**: If carrier booking fails due to port congestion, union strikes, or overcapacity, the engine dynamically initiates a loopback cycle to recalculate optimal alternate routes (e.g., diverting cargo from the Port of Los Angeles to the Seattle Port Authority), preventing expensive SLA breaches.
-- **On-Demand Customer Registration**: Enter any non-seeded Customer ID (e.g., `CUST-9999`) in the profiler to immediately reveal an integrated registration form. Register new clients directly to your MySQL/SQLite database in real-time.
-- **Multi-LLM Routing Engine**: Intelligently routes intelligence tasks and summary analytics across **Google Gemini 2.5 Flash** (recommended) and **Groq Mixtral-8x7b** depending on user credentials and performance preference.
-- **Hybrid Storage Layer**: Supports connections to a live **MySQL Database** with automatic schema initialization, fallback-capable with zero configuration to a **local SQLite sandbox database (`local_orders.db`)**.
-- **Immutable SCM Ledger Audit Trail**: Logs every single routing decision, LLM response, dynamic cost savings, safety guard check, and carrier GPS coordinate with high-fidelity timestamps.
-- **Executive AI Analytics Reports**: Instantly compile, review, and download professional, markdown-formatted supply chain health and return-on-investment (ROI) reports.
-- **Input & Output Safety Guards**: Integrated payload filters (`InputGuard` and `OutputGuard`) prevent prompt injections, SQL injections, and log exposure.
-- **Premium Glassmorphism Theme**: Glowing cards, customizable sidebar controls, live metrics, and a dynamic vertical SVG/HTML timeline showing agent execution steps in real-time.
+The **Autonomous Supply Chain Intelligence Engine** is a resilient, multi-agent AI orchestration platform engineered to automate global logistics operations, detect external supply chain disruptions in real-time, enforce international trade compliance, execute dynamic self-correction and rerouting loops, and maintain an immutable decision audit trail.
+
+Built with **LangGraph** stateful cyclic graphs and a high-performance **Streamlit** control center, the system continuously analyzes maritime lanes, supplier inventory, tariff classifications, and carrier bookings. When external anomalies arise (e.g., port strikes or container terminal overcapacity), the engine triggers an autonomous feedback loop to divert cargo to alternate hubs, preventing costly SLA breaches.
 
 ---
 
-## 📊 Enterprise ROI & Simulated Test Performance
+## 🌟 Core System Highlights
 
-Based on simulation modeling under a **10,000-order baseline**, the SCM Agentic Engine demonstrates high-value operational metrics:
-
-### 💰 Key Data Insights
-* **Total Projected Savings**: **$310K / month** ($3.72M / year).
-* **Automation Savings ($215K / month)**: Eliminating **43 minutes / order** of manual triage, data entries, compliance checks, and routing tasks.
-  * *Calculation:* $10,000 \text{ orders} \times 43 \text{ min} = 430,000 \text{ min} \approx 7,166 \text{ hours}$. Evaluated at a loaded specialist operational rate of $30/hour = $215,000.
-* **SLA Breach Prevention ($95K / month)**: Autonomous rerouting loops under simulated port congestion or terminal rejections.
-  * *Calculation:* Achieves a **97% reduction** in simulated breach rates. Avoiding 97 breaches/month at an average enterprise penalty/triage mitigation cost of $980/order = $95,000.
-
-### 🧪 Simulation Testing Overview
-To verify the self-correcting logic, operators can toggle **"Simulate External Port Congestion"** in the SCM Control Center. This test runs the following automated validation:
-1. **Intake**: Confirms VIP or Premium customer priority status.
-2. **First Logistics Plan**: Allocates standard ocean corridor (Shanghai ➡️ Port of Los Angeles).
-3. **Disruption Injection**: Carrier Node rejects the LA Port booking due to simulated overcapacity.
-4. **Autonomous Rerouting**: The LangGraph detects the booking failure, increments the cycle, and reroutes cargo via the Singapore Hub ➡️ Seattle Port Authority.
-5. **Fulfillment**: Confirms final delivery at Seattle Terminal, logging a `$12,450.00 (SLA Penalty Avoided)` validation record directly to the database ledger.
+| Feature | Description |
+| :--- | :--- |
+| 🧠 **Stateful Multi-Agent Network** | Compiled cyclic `StateGraph` managing order lifecycle, geo-coordinates, routing optimizations, and carrier dispatching. |
+| 🔄 **Self-Correction & Resiliency Loop** | Dynamic feedback loop that detects rejected bookings (e.g., Port of LA strike) and recalculates alternative routes (e.g., Singapore Hub ➡️ Seattle Port Authority). |
+| 🛡️ **Dual-Layer Guardrails** | `InputGuard` intercepts prompt injections, SQL injections (`UNION SELECT`, `OR 1=1`), and XSS payloads; `OutputGuard` sanitizes LLM responses. |
+| ⚡ **Multi-LLM Adaptive Router** | Intelligent switching between **Google Gemini 2.5 Flash** (recommended) and **Groq Mixtral-8x7b-32768**, backed by deterministic zero-downtime offline fallbacks. |
+| 💾 **Hybrid Storage Architecture** | Enterprise **MySQL Server** support with instant, zero-configuration automatic fallback to an isolated **SQLite Sandbox (`local_orders.db`)**. |
+| 📜 **Immutable Ledger Audit Trail** | High-fidelity logging of every agent decision, LLM response, dynamic cost savings calculation, and carrier location. |
+| 📄 **Executive AI Reports** | One-click compilation of comprehensive, markdown-formatted supply chain health and ROI reports with instant download. |
+| 👤 **On-Demand Customer Profiling** | Instant client lookup with integrated registration forms for dynamic enterprise onboarding. |
 
 ---
 
-## 🏗️ Multi-Agent Architecture & Flow
+## 🏗️ Multi-Agent Architecture
 
 ```mermaid
-graph TD
-    Node1[👤 Order Intake / UI Agent] -->|InputGuard Verification| Node2[🧠 SCM Intelligence Agent]
-    Node2 -->|Dynamic Disruption Analysis| Node3[🛡️ Verification & Compliance Agent]
-    Node3 -->|Tariff Classification & Rules| Node4[⚙️ Process Orchestration Agent]
-    Node4 -->|Carrier Selection & Routing| Node5[🚢 External Carrier Node]
-    
-    Node5 -->|Booking Rejected / Port Strike| Node4
-    Node5 -->|Success / Fulfilled| END([🏁 Fulfilled & Saved])
+flowchart TD
+    subgraph Client ["👤 Client / External Layer"]
+        A["Order Intake & UI Request"]
+    end
+
+    subgraph Security ["🔒 Guardrail Gateway"]
+        B{"InputGuard Validation"}
+        Q["🚨 System Quarantine (END)"]
+    end
+
+    subgraph AgenticCore ["🧠 LangGraph SCM Cyclic Workflow"]
+        C["👤 Order Intake Agent"]
+        D["🧠 Supply Chain Intelligence Agent\n(Risk & Historical Memory)"]
+        E["🛡️ Verification & Compliance Agent\n(Customs & Sandbox Lock)"]
+        F["⚙️ Process Orchestration Agent\n(Route, Carrier & Inventory)"]
+        G["🚢 External Entities / Carrier Node\n(Booking & Fulfillment Simulator)"]
+    end
+
+    subgraph DecisionLoop ["🔄 Self-Correction Protocol"]
+        H{"Carrier Booking Status"}
+    end
+
+    subgraph Output ["🏁 Completion & Persistence"]
+        I["✅ Execution Fulfilled"]
+        J[("💾 Database & Audit Ledger\n(MySQL / SQLite)")]
+    end
+
+    A --> C
+    C --> B
+    B -- "Malicious Input" --> Q
+    B -- "Valid Payload" --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H -- "Booking Rejected (Strike/Congestion)" --> F
+    H -- "Booking Confirmed" --> I
+    I --> J
 ```
 
-1. **User Interface / Intake Agent**: Validates order details, checks parameters, and enforces system input guards.
-2. **Supply Chain Intelligence Agent**: Evaluates real-time external risks (weather events, labor strikes, overcapacity) utilizing Gemini or Groq models.
-3. **Verification & Compliance Agent**: Validates trade compliance, classifies tariffs, and locks ledger rules.
-4. **Process Orchestration Agent**: Selects standard carriers and calculates costs. Under disruption, triggers dynamic alternate port/supplier selection.
-5. **External Carrier Node**: Simulates logistics dispatchers. Rejects bookings under simulated overcapacity to test and trigger the self-correction loop.
+### Agent Roles & Responsibilities
+
+1. **👤 User Interface / Order Intake Agent**: Validates order parameters, verifies customer priority tiers (`VIP`, `Premium`, `Standard`), and enforces payload sanitization via `InputGuard`.
+2. **🧠 Supply Chain Intelligence Agent**: Analyzes live shipping threats (typhoons, port strikes, geopolitical bottlenecks) against historical memory and recommends corrective actions.
+3. **🛡️ Verification & Compliance Agent**: Enforces international trade rules, validates tariff classification filings, and locks the compliance audit state.
+4. **⚙️ Process Orchestration Agent**: Selects optimal shipping lanes, calculates carrier pricing, and reserves regional inventory. Under disruption, allocates alternative hubs and suppliers.
+5. **🚢 External Entities / Carrier Node**: Simulates real-time dispatcher confirmations and tests the self-healing feedback cycle under simulated terminal congestion.
 
 ---
 
-## 💾 Database Schema & Structure
+## 💰 Enterprise ROI & Impact Metrics
 
-The system automatically manages and seeds the following tables:
-* **`customers`**: Customer profiles, email directories, corporate metadata, and priority SLA Tiers (`VIP`, `Premium`, `Standard`).
-* **`orders`**: Active and historic shipping status logs, product information, item quantity, and total transaction values.
-* **`order_history`**: The immutable ledger storing timestamps, agent thoughts, cost savings, live shipping locations, and the specific AI model engines utilized.
-* **`ai_reports`**: Executive performance and ROI markdown summaries compiled by the SCM AI engine.
+Modeled on a standard enterprise baseline of **10,000 shipments / month**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       MONTHLY PROJECTED SAVINGS: $310,000                   │
+│                        ANNUAL VALUE GENERATED: $3.72M                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+* **⚡ Automation Savings ($215,000 / month)**: Eliminates an average of **43 minutes / order** of manual triage, data entry, compliance review, and carrier dispatching.
+  $$\text{Savings} = 10{,}000 \text{ orders} \times \frac{43 \text{ min}}{60 \text{ min/hr}} \times \$30/\text{hr} = \$215{,}000/\text{month}$$
+* **🛡️ SLA Penalty Mitigation ($95,000 / month)**: Autonomous rerouting loops achieve a **97% reduction** in breach rates during port strikes or terminal congestion.
+  $$\text{Mitigated Loss} = 97 \text{ avoided breaches} \times \$980 \text{ avg. penalty} = \$95{,}000/\text{month}$$
+
+---
+
+## 🗄️ Database Architecture
+
+The system features automatic schema creation and seeding for both **MySQL** and **SQLite**:
+
+```
+customers ─────────────┐
+(customer_id, tier, ...) │ 1:N
+                       ├────── orders (order_id, product_name, quantity, total_price, status)
+                       │          │
+                       │          │ 1:N
+                       │          └────── order_history (id, order_id, phase, agent_name, action, savings, live_location)
+                       │
+                       └────── ai_reports (id, customer_id, report_text, model_used, created_at)
+```
+
+### Table Definitions
+
+* **`customers`**: Stores corporate profiles, contact directories, shipping addresses, and SLA priority tiers (`VIP`, `Premium`, `Standard`).
+* **`orders`**: Active and historical order details, product catalogs, volumes, and execution statuses.
+* **`order_history`**: The immutable ledger recording timestamps, agent actions, LLM reasoning, live coordinates, and cost savings.
+* **`ai_reports`**: Markdown-formatted executive performance and quarterly strategy reports.
 
 ---
 
 ## 💻 Tech Stack
 
-- **UI Framework**: Streamlit (Python 3.10+)
-- **Orchestration**: LangGraph, LangChain Core
-- **AI Models**: Google Gemini 2.5 Flash, Groq Mixtral-8x7b
-- **Database Engine**: MySQL Server (with local SQLite sandbox fallback)
-- **Styling**: Premium Glassmorphism theme utilizing vanilla custom CSS injections.
+* **Framework & UI**: [Streamlit](https://streamlit.io/) (1.45+) with Vanilla Glassmorphic CSS
+* **Workflow Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain Core](https://github.com/langchain-ai/langchain)
+* **AI & LLM Inference**: [Google Gemini 2.5 Flash](https://ai.google.dev/), [Groq](https://groq.com/) (Mixtral-8x7b-32768)
+* **Storage & Persistence**: [PyMySQL](https://github.com/PyMySQL/PyMySQL), SQLite3, [Cryptography](https://cryptography.io/)
+* **Configuration & Security**: [Python-Dotenv](https://github.com/theskumar/python-dotenv), Pydantic v2
 
 ---
 
-## 🛠️ Local Development Setup
+## 🚀 Quick Start Guide
 
 ### Prerequisites
-- Python 3.10+
-- MySQL Server (optional, SQLite Sandbox is configured automatically if MySQL is offline)
+* **Python**: `3.10` or higher
+* **Git** installed on your system
+* *(Optional)* MySQL Server (SQLite sandbox runs out-of-the-box with zero setup)
 
-### 1. Clone the Codebase
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/sounakss7/SCM_AGENTIC_WORKFLOW.git
 cd SCM_AGENTIC_WORKFLOW
 ```
 
-### 2. Install Required Packages
+### 2. Set Up Virtual Environment & Dependencies
 ```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# Linux / macOS:
+source .venv/bin/activate
+
+# Install required packages
 pip install -r requirements.txt
 ```
 
-### 3. Setup Environment Variables
-Create a `.env` file in the root directory:
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GROQ_API_KEY=your_groq_api_key_here
+### 3. Configure Environment Variables
+Copy the sample environment file:
+```bash
+cp .env.example .env
 ```
 
-### 4. Launch the Dashboard
-```bash
-python -m streamlit run streamlit_app.py
+Edit `.env` with your API credentials:
+```env
+# Google Gemini API Key (Recommended)
+GEMINI_API_KEY="AIzaSyYourActualKeyGoesHere..."
+
+# Groq API Key (Optional for Mixtral routing)
+GROQ_API_KEY="gsk_YourGroqApiKeyHere..."
+
+# Storage configuration (Defaults to SQLite sandbox)
+USE_SQLITE="true"
 ```
-Open **`http://localhost:8501`** (or the port output in your terminal) in your browser.
+
+### 4. Run Automated Test Suite
+Verify that all guardrails, database operations, and agent workflows are operational:
+```bash
+python test_runner.py
+```
+
+### 5. Launch the SCM Dashboard
+```bash
+streamlit run streamlit_app.py
+```
+
+Navigate to **`http://localhost:8501`** in your browser.
 
 ---
 
-## 👨‍💻 Contributors
+## 🧪 Testing the Resiliency Loop
 
-* **Sounak Sarkar** - *Lead Developer & AI Architect* - [@sounakss7](https://github.com/sounakss7)
+To verify the autonomous self-correction mechanism in action:
 
-*Built with ❤️ for the ET Gen AI Hackathon*
+1. On the **📈 SCM Control Center** tab, select customer **`CUST-1002`** (Sarah Chen / Global Logistics Corp).
+2. Select active order **`ORD-5003`** (or create a new order).
+3. Toggle **"💥 Simulate External Port Congestion (SLA Risk)"**.
+4. Click **"🚀 Execute Multi-Agent Workflow"**.
+5. Observe the live execution timeline:
+   * **Cycle 0**: Carrier Node rejects the initial booking at Port of Los Angeles due to simulated overcapacity.
+   * **Cycle 1**: LangGraph triggers the loopback to `orchestration_agent`, recalculating the route via Singapore Hub ➡️ Seattle Port Authority.
+   * **Resolution**: Final booking confirmed at Seattle Terminal with **$12,450.00** logged in prevented SLA penalties.
+
+---
+
+## 🔒 Security & Safety Controls
+
+* **Injection Guard**: Strict regex patterns detect and quarantine prompt injection attempts and SQL injection signatures (`UNION SELECT`, `DROP TABLE`, `OR 1=1`, `<script>`).
+* **Quarantine Short-Circuit**: Quarantined requests immediately terminate at `ui_agent` and route directly to `END`, preventing unauthorized LLM token consumption.
+* **Response Sanitization**: `OutputGuard` validates all generated responses before committing records to the audit ledger.
+
+---
+
+## 📁 Repository Structure
+
+```
+SCM_AGENTIC_WORKFLOW/
+├── agents/
+│   ├── guards.py                 # InputGuard & OutputGuard security layer
+│   ├── nodes.py                  # Multi-agent node implementations & LLM loaders
+│   └── workflow.py               # Compiled LangGraph StateGraph & conditional routers
+├── database/
+│   └── db_manager.py             # Hybrid MySQL/SQLite driver, schema init & seed data
+├── ui/
+│   ├── scm_logo.png              # SCM dashboard branding asset
+│   └── styles.py                 # Custom Glassmorphic Dark CSS & SVG timeline renderer
+├── .env.example                  # Environment variable configuration template
+├── .gitignore                    # Git ignore definitions
+├── LICENSE                       # MIT License
+├── README.md                     # Project documentation
+├── requirements.txt              # Production dependency specifications
+├── SCM_Architecture_Workflow.png # Architecture & workflow visual diagram
+├── streamlit_app.py              # Main dashboard application & tab controllers
+└── test_runner.py                # Automated test runner suite
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 👨‍💻 Author & Contributions
+
+* **Sounak Sarkar** - *AI Engineer & Lead Architect* - [@sounakss7](https://github.com/sounakss7)
+
+*Developed for the Economic Times (ET) GenAI Hackathon & Enterprise SCM Automation.*

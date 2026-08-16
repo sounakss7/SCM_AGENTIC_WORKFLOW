@@ -1,16 +1,36 @@
-import streamlit as st
+import os
 import re
 import json
+import streamlit as st
 from typing import List, Dict, Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from agents.guards import SecurityGuards
 
 # Dynamic LLM Client Loader
-def get_llm_client(prefer: str = "gemini"):
-    """Instantiate the requested LLM with fallback option"""
-    gemini_key = st.session_state.get("gemini_api_key", "").strip()
-    groq_key = st.session_state.get("groq_api_key", "").strip()
+def get_llm_client(prefer: str = None):
+    """Instantiate the requested LLM with fallback options"""
+    if prefer is None:
+        try:
+            if hasattr(st, "session_state"):
+                prefer = st.session_state.get("routing_preference", "gemini")
+        except Exception:
+            prefer = os.getenv("ROUTING_PREFERENCE", "gemini")
+    prefer = (prefer or "gemini").lower()
+
+    gemini_key = ""
+    groq_key = ""
+    try:
+        if hasattr(st, "session_state"):
+            gemini_key = st.session_state.get("gemini_api_key", "").strip()
+            groq_key = st.session_state.get("groq_api_key", "").strip()
+    except Exception:
+        pass
+
+    if not gemini_key:
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not groq_key:
+        groq_key = os.getenv("GROQ_API_KEY", "").strip()
     
     if prefer == "gemini" and gemini_key:
         try:
@@ -20,7 +40,8 @@ def get_llm_client(prefer: str = "gemini"):
                 temperature=0.1
             ), "Gemini 2.5 Flash"
         except Exception as e:
-            st.warning(f"Failed to initialize Gemini, falling back to Groq. Error: {e}")
+            if hasattr(st, "warning"):
+                st.warning(f"Failed to initialize Gemini, falling back to Groq. Error: {e}")
             
     if groq_key:
         try:
@@ -30,7 +51,8 @@ def get_llm_client(prefer: str = "gemini"):
                 temperature=0.1
             ), "Groq Mixtral"
         except Exception as e:
-            st.warning(f"Failed to initialize Groq. Error: {e}")
+            if hasattr(st, "warning"):
+                st.warning(f"Failed to initialize Groq. Error: {e}")
             
     if gemini_key:
         try:
@@ -46,17 +68,31 @@ def get_llm_client(prefer: str = "gemini"):
 
 # Robust JSON Extractor & Parser
 def parse_json_response(content: str, default_val: dict) -> dict:
+    if not content or not isinstance(content, str):
+        return default_val
     try:
+        # Strip markdown code fences if present
+        clean_content = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
+        clean_content = re.sub(r"```\s*$", "", clean_content, flags=re.MULTILINE).strip()
+        
         # Search for first { and last }
-        start_idx = content.find('{')
-        end_idx = content.rfind('}')
+        start_idx = clean_content.find('{')
+        end_idx = clean_content.rfind('}')
         if start_idx != -1 and end_idx != -1:
-            json_str = content[start_idx:end_idx+1]
+            json_str = clean_content[start_idx:end_idx+1]
             return json.loads(json_str)
-        return json.loads(content)
+        return json.loads(clean_content)
     except Exception as e:
         print(f"JSON Parse Error: {e}. Raw content: {content}")
         return default_val
+
+# Helper to safely update agent_running status
+def set_agent_running(name: str):
+    try:
+        if hasattr(st, "session_state"):
+            st.session_state.agent_running = name
+    except Exception:
+        pass
 
 # ==========================================
 # SCM LLM-DRIVEN AGENT NODES
@@ -64,10 +100,17 @@ def parse_json_response(content: str, default_val: dict) -> dict:
 
 def user_interface_agent(state: dict) -> dict:
     state["current_phase"] = "Order Intake Phase"
-    model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
+    set_agent_running("User Interface Intake")
+    if "agent_thoughts" not in state or not isinstance(state["agent_thoughts"], dict):
+        state["agent_thoughts"] = {}
+
+    model, model_name = get_llm_client()
     
     # 🔒 InputGuard validation
-    is_safe = SecurityGuards.InputGuard(state["order_id"], state["customer_id"], state["detected_disruptions"])
+    order_id = state.get("order_id", "")
+    customer_id = state.get("customer_id", "")
+    disruptions = state.get("detected_disruptions", [])
+    is_safe = SecurityGuards.InputGuard(order_id, customer_id, disruptions)
     
     default_resp = {
         "thoughts": "UI Intake Agent: Verifying order specifications and checking payload safety. Intake Successful: Customer tier rules active.",
@@ -76,23 +119,22 @@ def user_interface_agent(state: dict) -> dict:
     }
     
     if not is_safe:
-        default_resp["thoughts"] = "⚠️ SECURITY THREAT INTERCEPTED: Input fails security inspection."
-        default_resp["location"] = "System Quarantine"
+        threat_msg = "⚠️ SECURITY THREAT INTERCEPTED: Malicious payload intercepted by InputGuard layer."
         state["status"] = "Security Exception"
         state["detected_disruptions"] = ["Malicious input injection intercepted by Guard Layer."]
         state["requires_correction"] = True
         state["live_location"] = "System Quarantine"
         state["cost_savings"] = "$0.00"
-        state["agent_thoughts"]["ui_agent"] = default_resp["thoughts"]
+        state["agent_thoughts"]["ui_agent"] = threat_msg
         return state
 
     if model:
         try:
             prompt = f"""
             You are the SCM Intake Agent. Review the following order details:
-            - Order ID: {state['order_id']}
-            - Customer ID: {state['customer_id']}
-            - Customer Tier: {state['customer_tier']}
+            - Order ID: {state.get('order_id')}
+            - Customer ID: {state.get('customer_id')}
+            - Customer Tier: {state.get('customer_tier')}
             
             Confirm that the details are safe and compile the initial tracking logs.
             You MUST respond with a single JSON object in this format:
@@ -119,20 +161,23 @@ def user_interface_agent(state: dict) -> dict:
     return state
 
 def supply_chain_intelligence_agent(state: dict) -> dict:
-    if state["status"] == "Security Exception":
+    if state.get("status") == "Security Exception":
         return state
         
     state["current_phase"] = "Order Assessment Phase"
+    set_agent_running("Supply Chain Intelligence")
+    if "agent_thoughts" not in state or not isinstance(state["agent_thoughts"], dict):
+        state["agent_thoughts"] = {}
+
     disruptions = state.get("detected_disruptions", [])
-    
-    st.session_state.agent_running = "Supply Chain Intelligence"
     
     # Check for historical memory
     historical_solution = "No historical incident matches."
     if disruptions:
-        if "port strike" in " ".join(disruptions).lower() or "congestion" in " ".join(disruptions).lower():
+        disrupt_text = " ".join(disruptions).lower()
+        if "port strike" in disrupt_text or "congestion" in disrupt_text or "strike" in disrupt_text:
             historical_solution = "Prior incident: Port strike congestion resolved by shifting freight to Seattle Port Authority and scheduling secondary rail/truck routes."
-        elif "typhoon" in " ".join(disruptions).lower() or "weather" in " ".join(disruptions).lower():
+        elif "typhoon" in disrupt_text or "weather" in disrupt_text or "storm" in disrupt_text:
             historical_solution = "Prior incident: Ocean route storm resolved by shifting priority logistics to air freight block or routing south of storm corridor."
 
     default_resp = {
@@ -143,7 +188,7 @@ def supply_chain_intelligence_agent(state: dict) -> dict:
     if disruptions:
         default_resp["thoughts"] = f"Intelligence Agent: Threat Detected! Alert: {', '.join(disruptions)}. Dynamic rerouting required."
 
-    model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
+    model, model_name = get_llm_client()
     
     if model:
         try:
@@ -173,24 +218,29 @@ def supply_chain_intelligence_agent(state: dict) -> dict:
     return state
 
 def compliance_agent(state: dict) -> dict:
-    if state["status"] == "Security Exception":
+    if state.get("status") == "Security Exception":
         return state
         
     state["current_phase"] = "Regulatory Sandbox Verification"
-    st.session_state.agent_running = "Verification & Compliance"
+    set_agent_running("Verification & Compliance")
+    if "agent_thoughts" not in state or not isinstance(state["agent_thoughts"], dict):
+        state["agent_thoughts"] = {}
+    
+    customer_tier = state.get("customer_tier", "Standard")
+    live_loc = state.get("live_location", "Origin Point")
     
     default_resp = {
-        "thoughts": f"Compliance Agent: Customer Tier: {state['customer_tier']}. Checking export/import compliance for cargo. Verifying custom tariff filing codes. Immutable audit trail locked in. Decision verified as compliant under international trade rules."
+        "thoughts": f"Compliance Agent: Customer Tier: {customer_tier}. Checking export/import compliance for cargo. Verifying custom tariff filing codes. Immutable audit trail locked in. Decision verified as compliant under international trade rules."
     }
     
-    model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
+    model, model_name = get_llm_client()
     
     if model:
         try:
             prompt = f"""
             You are the SCM Compliance Officer. Verify trade compliance parameters for this order:
-            - Customer Tier: {state['customer_tier']}
-            - Cargo Location: {state['live_location']}
+            - Customer Tier: {customer_tier}
+            - Cargo Location: {live_loc}
             
             Check customs declarations and confirm regulatory sandbox lock.
             You MUST respond with a single JSON object in this format:
@@ -209,11 +259,13 @@ def compliance_agent(state: dict) -> dict:
     return state
 
 def orchestration_agent(state: dict) -> dict:
-    if state["status"] == "Security Exception":
+    if state.get("status") == "Security Exception":
         return state
         
     state["current_phase"] = "Logistics Planning Phase"
-    st.session_state.agent_running = "Process Orchestration"
+    set_agent_running("Process Orchestration")
+    if "agent_thoughts" not in state or not isinstance(state["agent_thoughts"], dict):
+        state["agent_thoughts"] = {}
     
     cycles = state.get("optimization_cycles", 0)
     disruptions = state.get("detected_disruptions", [])
@@ -244,7 +296,7 @@ def orchestration_agent(state: dict) -> dict:
             "cost_savings": "$4,250 (SLA Penalty Avoided)"
         }
         
-    model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
+    model, model_name = get_llm_client()
     
     if model:
         try:
@@ -252,7 +304,7 @@ def orchestration_agent(state: dict) -> dict:
             You are the SCM Logistics Planner. Select the best route, carrier, and inventory allocation.
             - Optimization Cycle count: {cycles}
             - Detected Disruptions: {', '.join(disruptions) if disruptions else 'None'}
-            - Current Location: {state['live_location']}
+            - Current Location: {state.get('live_location', 'Origin')}
             
             Determine the shipping route and dynamic cost savings (if cycle > 0 or disruptions exist, allocate alternate suppliers or Seattle port to prevent SLA breach).
             You MUST respond with a single JSON object in this format:
@@ -288,11 +340,13 @@ def orchestration_agent(state: dict) -> dict:
     return state
 
 def external_entities_node(state: dict) -> dict:
-    if state["status"] == "Security Exception":
+    if state.get("status") == "Security Exception":
         return state
         
     state["current_phase"] = "Autonomous Execution Phase"
-    st.session_state.agent_running = "External Entities Simulation"
+    set_agent_running("External Entities Simulation")
+    if "agent_thoughts" not in state or not isinstance(state["agent_thoughts"], dict):
+        state["agent_thoughts"] = {}
     
     cycles = state.get("optimization_cycles", 0)
     simulate_disruption = state.get("simulate_disruption", False)
@@ -322,13 +376,13 @@ def external_entities_node(state: dict) -> dict:
             "cost_savings": "$12,450.00 (SLA Penalty Prevented + Dyn. Route optimization)"
         }
         
-    model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
+    model, model_name = get_llm_client()
     
     if model:
         try:
             prompt = f"""
             You are the SCM Fulfillment Simulator. Simulate carrier booking confirmations and final delivery.
-            - Selected Route: {state['route_selected']}
+            - Selected Route: {state.get('route_selected')}
             - Simulate Disruption active: {simulate_disruption}
             - Current Optimization cycle: {cycles}
             
@@ -355,7 +409,7 @@ def external_entities_node(state: dict) -> dict:
             
             # Check if booking failed and we need to increment cycle
             if state["carrier_status"] == "Booking Rejected (Port Overcapacity/Strike)" and cycles < 1:
-                state["optimization_cycles"] += 1
+                state["optimization_cycles"] = cycles + 1
                 
             state["agent_thoughts"]["external_entities"] = f"[{model_name}] {data.get('thoughts', default_resp['thoughts'])}"
         except Exception as e:
@@ -364,7 +418,7 @@ def external_entities_node(state: dict) -> dict:
             state["live_location"] = default_resp["live_location"]
             state["cost_savings"] = default_resp["cost_savings"]
             if default_resp["carrier_status"] == "Booking Rejected (Port Overcapacity/Strike)" and cycles < 1:
-                state["optimization_cycles"] += 1
+                state["optimization_cycles"] = cycles + 1
             state["agent_thoughts"]["external_entities"] = f"{default_resp['thoughts']} (LLM Error fallback: {e})"
     else:
         state["carrier_status"] = default_resp["carrier_status"]
@@ -372,7 +426,8 @@ def external_entities_node(state: dict) -> dict:
         state["live_location"] = default_resp["live_location"]
         state["cost_savings"] = default_resp["cost_savings"]
         if default_resp["carrier_status"] == "Booking Rejected (Port Overcapacity/Strike)" and cycles < 1:
-            state["optimization_cycles"] += 1
+            state["optimization_cycles"] = cycles + 1
         state["agent_thoughts"]["external_entities"] = default_resp["thoughts"]
         
     return state
+

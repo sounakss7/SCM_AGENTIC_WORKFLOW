@@ -1,13 +1,17 @@
-node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
+# Environments
 .env*
 !.env.example
-# Security
 .env
+.venv/
+env/
+venv/
+ENV/
+
+# Databases & local storage
+*.db
+*.sqlite
+*.sqlite3
+local_orders.db
 
 # Python
 __pycache__/
@@ -15,9 +19,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -33,3 +34,15 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.coverage
+
+# Streamlit
+.streamlit/
+
+# OS and IDE
+.DS_Store
+*.log
+.vscode/
+.idea/
+
