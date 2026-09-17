@@ -34,9 +34,14 @@ def ui_edge_router(state: SCMState) -> str:
 def orchestration_edge_router(state: SCMState) -> str:
     if state.get("status") == "Security Exception":
         return "end"
-    if state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)":
+    # Guard loopback to a maximum of 2 cycles to prevent infinite looping
+    if (
+        state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)"
+        and state.get("optimization_cycles", 0) <= 2
+    ):
         return "loop_to_orchestration"
     return "end"
+
 
 def build_scm_workflow():
     workflow = StateGraph(SCMState)

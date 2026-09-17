@@ -8,7 +8,7 @@
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange.svg?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Google Gemini](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
-[![Groq](https://img.shields.io/badge/Inference-Groq%20Mixtral-F55036.svg?logo=fastapi&logoColor=white)](https://groq.com/)
+[![Groq](https://img.shields.io/badge/Inference-Groq%20Llama%203.3-F55036.svg?logo=fastapi&logoColor=white)](https://groq.com/)
 [![Database](https://img.shields.io/badge/Database-MySQL%20%7C%20SQLite-00758F.svg?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -33,13 +33,14 @@ Built with **LangGraph** stateful cyclic graphs and a high-performance **Streaml
 | Feature | Description |
 | :--- | :--- |
 | 🧠 **Stateful Multi-Agent Network** | Compiled cyclic `StateGraph` managing order lifecycle, geo-coordinates, routing optimizations, and carrier dispatching. |
-| 🔄 **Self-Correction & Resiliency Loop** | Dynamic feedback loop that detects rejected bookings (e.g., Port of LA strike) and recalculates alternative routes (e.g., Singapore Hub ➡️ Seattle Port Authority). |
-| 🛡️ **Dual-Layer Guardrails** | `InputGuard` intercepts prompt injections, SQL injections (`UNION SELECT`, `OR 1=1`), and XSS payloads; `OutputGuard` sanitizes LLM responses. |
-| ⚡ **Multi-LLM Adaptive Router** | Intelligent switching between **Google Gemini 2.5 Flash** (recommended) and **Groq Mixtral-8x7b-32768**, backed by deterministic zero-downtime offline fallbacks. |
-| 💾 **Hybrid Storage Architecture** | Enterprise **MySQL Server** support with instant, zero-configuration automatic fallback to an isolated **SQLite Sandbox (`local_orders.db`)**. |
+| 🔄 **Self-Correction & Resiliency Loop** | Dynamic feedback loop that detects rejected bookings (e.g., Port of LA strike) and recalculates alternative routes (e.g., Singapore Hub ➡️ Seattle Port Authority) with a maximum-cycle guard (`<= 2`). |
+| 🛡️ **Dual-Layer Guardrails** | `InputGuard` intercepts prompt injections, stacked SQL injections (`; DROP`, `; DELETE`), inline comments (`--`), and XSS payloads; `OutputGuard` sanitizes all LLM responses across nodes before committing. |
+| ⚡ **Multi-LLM Adaptive Router** | Intelligent switching between **Google Gemini 2.5 Flash** (recommended) and **Groq Llama 3.3 70B** (with Llama 3.1 fallback), backed by deterministic zero-downtime offline fallbacks. |
+| 💾 **Hybrid Storage Architecture** | Enterprise **MySQL Server** support with instant, zero-configuration automatic fallback to an isolated **SQLite Sandbox (`local_orders.db`)** with concurrent timeout protection and SQL-driven reset. |
 | 📜 **Immutable Ledger Audit Trail** | High-fidelity logging of every agent decision, LLM response, dynamic cost savings calculation, and carrier location. |
-| 📄 **Executive AI Reports** | One-click compilation of comprehensive, markdown-formatted supply chain health and ROI reports with instant download. |
+| 📄 **Executive AI Reports** | One-click compilation of comprehensive, markdown-formatted supply chain health and ROI reports rendered cleanly inside responsive container cards. |
 | 👤 **On-Demand Customer Profiling** | Instant client lookup with integrated registration forms for dynamic enterprise onboarding. |
+
 
 ---
 
@@ -142,7 +143,7 @@ customers ─────────────┐
 
 * **Framework & UI**: [Streamlit](https://streamlit.io/) (1.45+) with Vanilla Glassmorphic CSS
 * **Workflow Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain Core](https://github.com/langchain-ai/langchain)
-* **AI & LLM Inference**: [Google Gemini 2.5 Flash](https://ai.google.dev/), [Groq](https://groq.com/) (Mixtral-8x7b-32768)
+* **AI & LLM Inference**: [Google Gemini 2.5 Flash](https://ai.google.dev/) (with 1.5 fallback), [Groq](https://groq.com/) (Llama-3.3-70b-versatile with Llama-3.1-8b-instant fallback)
 * **Storage & Persistence**: [PyMySQL](https://github.com/PyMySQL/PyMySQL), SQLite3, [Cryptography](https://cryptography.io/)
 * **Configuration & Security**: [Python-Dotenv](https://github.com/theskumar/python-dotenv), Pydantic v2
 
@@ -182,22 +183,60 @@ Copy the sample environment file:
 cp .env.example .env
 ```
 
-Edit `.env` with your API credentials:
+Edit `.env` with your desired configuration:
 ```env
-# Google Gemini API Key (Recommended)
+# Google Gemini API Key (Recommended for multi-agent reasoning & reports)
 GEMINI_API_KEY="AIzaSyYourActualKeyGoesHere..."
 
-# Groq API Key (Optional for Mixtral routing)
+# Groq API Key (High-speed Llama 3.3 routing)
 GROQ_API_KEY="gsk_YourGroqApiKeyHere..."
 
-# Storage configuration (Defaults to SQLite sandbox)
+# Preferred AI Routing Engine ("gemini" or "groq")
+ROUTING_PREFERENCE="gemini"
+
+# Storage configuration ("true" for SQLite sandbox, "false" for MySQL server)
 USE_SQLITE="true"
+
+# MySQL Parameters (Only if USE_SQLITE="false")
+MYSQL_HOST="localhost"
+MYSQL_PORT="3306"
+MYSQL_USER="root"
+MYSQL_PASSWORD="your_mysql_password"
+MYSQL_DATABASE="scm_agentic_db"
 ```
 
 ### 4. Run Automated Test Suite
-Verify that all guardrails, database operations, and agent workflows are operational:
+Verify that all security guards, database persistence, loopback self-healing, and UI renderers pass:
 ```bash
 python test_runner.py
+```
+
+Expected output:
+```
+--- Testing Security Guards ---
+Security Guards & OutputGuard Parser Tests Passed!
+
+--- Testing Database Layer (SQLite) ---
+Reset Database Result: True - Database initialized and seeded successfully.
+Database Tests Passed!
+
+--- Testing Workflow (Normal Execution) ---
+Workflow finished in 5 steps: ['ui_agent', 'intelligence_agent', 'compliance_agent', 'orchestration_agent', 'external_entities']
+Final Status: Execution Fulfilled | Location: Pacific Ocean Transit -> San Jose, CA (Delivered)
+
+--- Testing Workflow (Disruption Simulation & Self-Correction Loop) ---
+Disrupted Workflow completed in 7 steps: ['ui_agent', 'intelligence_agent', 'compliance_agent', 'orchestration_agent', 'external_entities', 'orchestration_agent', 'external_entities']
+Final Status: Execution Fulfilled | Final Location: Diverted: Oakland Port Terminal -> Seattle Terminal (Delivered) | Savings: $12,450.00
+
+--- Testing Workflow (Security Quarantine Termination) ---
+Quarantined Workflow stopped in 1 step(s): ['ui_agent']
+
+--- Testing UI Rendering Helpers ---
+UI Rendering Tests Passed!
+
+==========================================
+ALL TESTS RUN COMPLETE AND PASSED SUCCESSFULLY!
+==========================================
 ```
 
 ### 5. Launch the SCM Dashboard
@@ -226,9 +265,12 @@ To verify the autonomous self-correction mechanism in action:
 
 ## 🔒 Security & Safety Controls
 
-* **Injection Guard**: Strict regex patterns detect and quarantine prompt injection attempts and SQL injection signatures (`UNION SELECT`, `DROP TABLE`, `OR 1=1`, `<script>`).
-* **Quarantine Short-Circuit**: Quarantined requests immediately terminate at `ui_agent` and route directly to `END`, preventing unauthorized LLM token consumption.
-* **Response Sanitization**: `OutputGuard` validates all generated responses before committing records to the audit ledger.
+* **Dual-Layer Injection Guard (`InputGuard`)**: Strict regex patterns detect prompt injection attacks, stacked SQL commands (`; DROP`, `; DELETE`), multi-line comment delimiters, and event-based XSS payloads (`<script>`, `javascript:`, `onerror=`).
+* **Quarantine Short-Circuit**: Quarantined requests immediately terminate at `ui_agent` and route directly to `END`, preventing downstream execution and token wastage.
+* **Output Sanitization (`OutputGuard`)**: Validates and sanitizes all generated LLM responses before committing records to the audit ledger or state thoughts.
+* **Infinite Loop Ceiling**: Graph conditional edges limit maximum rerouting cycles (`optimization_cycles <= 2`) to ensure deterministic termination under unexpected external conditions.
+* **Zero-Lock Database Architecture**: SQL-driven table resets prevent Windows OS file lock (`WinError 32`) conflicts.
+
 
 ---
 

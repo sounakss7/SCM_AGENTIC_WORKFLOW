@@ -4,17 +4,23 @@ from typing import List
 class SecurityGuards:
     @staticmethod
     def InputGuard(order_id: str, customer_id: str, disruptions: List[str]) -> bool:
-        """Inspect context for prompt injections or SQL injection keywords."""
+        """Inspect context for prompt injections, stacked SQL injections, or XSS vectors."""
         malicious_patterns = [
             r"ignore\s+(?:all\s+)?previous\s+instructions",
+            r"disregard\s+(?:all\s+)?previous",
+            r"bypass\s+(?:all\s+)?(?:security|guardrails)",
+            r"system\s+(?:prompt|instructions)",
+            r"reveal\s+(?:your\s+)?(?:system\s+)?prompt",
             r"drop\s+table",
-            r"system\s+prompt",
+            r";\s*(?:drop|delete|insert|update|alter|truncate)\b",
             r"union\s+(?:all\s+)?select",
-            r"or\s+1\s*=\s*1",
-            r"or\s+'1'\s*=\s*'1'",
-            r"--\s*$",
+            r"or\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?",
+            r"--(?:\s|$)",
+            r"/\*.*?\*/",
             r"exec\s*\(",
-            r"<script.*?>"
+            r"<script.*?>",
+            r"javascript\s*:",
+            r"on(?:error|load|click|mouseover)\s*="
         ]
         items_to_check = [order_id, customer_id] + (disruptions if disruptions else [])
         for item in items_to_check:
@@ -33,7 +39,18 @@ class SecurityGuards:
         cleaned = response_text.strip()
         if not cleaned:
             return False
-        if cleaned.startswith("Error:") or cleaned.startswith("Exception:") or "malicious injection" in cleaned.lower():
+        
+        # Check error prefixes
+        error_prefixes = ("error:", "exception:", "traceback", "fatal:", "[error]", "[exception]")
+        cleaned_lower = cleaned.lower()
+        if any(cleaned_lower.startswith(prefix) for prefix in error_prefixes):
             return False
+            
+        # Check for leaked threat injection tokens
+        leak_markers = ("malicious injection", "ignore all previous instructions", "<script")
+        if any(marker in cleaned_lower for marker in leak_markers):
+            return False
+            
         return True
+
 

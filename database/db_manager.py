@@ -52,7 +52,7 @@ def get_mysql_connection():
 def get_db_cursor():
     """Returns database connection and cursor, falling back to SQLite if MySQL is disabled/unconfigured"""
     if is_using_sqlite():
-        conn = sqlite3.connect("local_orders.db", check_same_thread=False)
+        conn = sqlite3.connect("local_orders.db", timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn, conn.cursor()
     else:
@@ -77,11 +77,12 @@ def test_mysql_server(host, port, user, password):
 def init_database():
     """Initializes tables in either MySQL or SQLite depending on configuration"""
     if is_using_sqlite():
-        conn = sqlite3.connect("local_orders.db")
+        conn = sqlite3.connect("local_orders.db", timeout=30.0)
         cursor = conn.cursor()
         
         # Enable Foreign Keys in SQLite
         cursor.execute("PRAGMA foreign_keys = ON")
+
         
         # Create Tables
         cursor.execute("""
@@ -241,7 +242,7 @@ def seed_database():
                 
                 # ORD-5003 History (Port strike disruption)
                 ('ORD-5003', 'Order Intake Phase', 'UI (Customer Layer)', 'Order ORD-5003 submitted by Premium Customer Sarah Chen.', 'Deterministic Engine', '$0.00', 'Shanghai Distribution Center', '2026-05-20 14:16:00'),
-                ('ORD-5003', 'Order Assessment Phase', 'Supply Chain Intelligence', 'Disruption alert: Port Strike at LA Port detected. Critical SLA breach risk of 95%.', 'Groq (Mixtral 8x7b)', '$0.00', 'Shanghai Distribution Center', '2026-05-20 14:17:00'),
+                ('ORD-5003', 'Order Assessment Phase', 'Supply Chain Intelligence', 'Disruption alert: Port Strike at LA Port detected. Critical SLA breach risk of 95%.', 'Groq (Llama 3.3)', '$0.00', 'Shanghai Distribution Center', '2026-05-20 14:17:00'),
                 ('ORD-5003', 'Regulatory Sandbox Verification', 'Verification & Compliance', 'Sourcing complies with domestic rules. Trade insurance rider activated.', 'Deterministic Engine', '$0.00', 'Shanghai Distribution Center', '2026-05-20 14:17:30'),
                 ('ORD-5003', 'Logistics Planning Phase', 'Process Orchestration', 'Carrier Booking Rejected (Port Overcapacity) at LA. Initiating self-correction...', 'Deterministic Engine', '$0.00', 'Port of Los Angeles (Congested)', '2026-05-20 14:18:00'),
                 ('ORD-5003', 'Logistics Planning Phase (Reroute)', 'Process Orchestration', 'Self-Correction (Cycle 1): Rerouted cargo to Seattle Port Authority. Alternate carrier booked.', 'Graph Node Algorithm', '$0.00', 'Diverting: Seattle Port Authority', '2026-05-20 14:19:00'),
@@ -250,7 +251,7 @@ def seed_database():
             
             ai_reports = [
                 ('CUST-1001', '### Executive Supply Chain Report for TechCorp Industries\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 1 (`ORD-5002` - Processing)\n* **Completed Orders:** 1 (`ORD-5001` - Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nTechCorp’s supply chain is highly resilient. Recent shipments from Shenzhen to San Jose were completed within 36 hours utilizing high-speed ocean corridors. The current order `ORD-5002` is progressing normally through the Shanghai Distribution Center.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $250.00 (Standard Carrier Volume Discount).\n* **Potential Optimization:** Upgrading `ORD-5002` to air cargo is not required unless inventory thresholds fall below 5 units. SCM Agent recommends maintaining standard routing.', 'Gemini 2.5 Flash', '2026-05-21 11:30:00'),
-                ('CUST-1002', '### Executive Supply Chain Report for Global Logistics Corp\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 0\n* **Completed Orders:** 1 (`ORD-5003` - Rerouted & Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nGlobal Logistics Corp faced a severe disruption risk with `ORD-5003` due to a port strike at the Port of Los Angeles. The SCM agent autonomously identified the disruption and executed alternative logistics routing.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $12,450.00 (SLA Penalty Avoided by Diverting to Seattle Port).\n* **Potential Optimization:** Agent recommends keeping Seattle Port Authority as a primary alternative routing option for Q3 2026 due to anticipated union negotiations at LA Port.', 'Groq (Mixtral 8x7b)', '2026-05-21 11:45:00')
+                ('CUST-1002', '### Executive Supply Chain Report for Global Logistics Corp\n\n**Prepared by:** SCM AI Director\n**Analysis Period:** May 2026\n\n#### 1. Performance Overview\n* **Total Active Orders:** 0\n* **Completed Orders:** 1 (`ORD-5003` - Rerouted & Fulfilled)\n* **SLA Fulfillment Rate:** 100%\n\n#### 2. Risk Sourcing Assessment\nGlobal Logistics Corp faced a severe disruption risk with `ORD-5003` due to a port strike at the Port of Los Angeles. The SCM agent autonomously identified the disruption and executed alternative logistics routing.\n\n#### 3. Financial Optimization Summary\n* **Accumulated Savings:** $12,450.00 (SLA Penalty Avoided by Diverting to Seattle Port).\n* **Potential Optimization:** Agent recommends keeping Seattle Port Authority as a primary alternative routing option for Q3 2026 due to anticipated union negotiations at LA Port.', 'Groq (Llama 3.3)', '2026-05-21 11:45:00')
             ]
             
             # Executing insertions
@@ -273,6 +274,37 @@ def seed_database():
         return False, f"Seeding failed: {e}"
     finally:
         conn.close()
+
+def reset_database():
+    """Completely resets and re-seeds the active database (SQLite or MySQL)."""
+    try:
+        if is_using_sqlite():
+            conn = sqlite3.connect("local_orders.db", timeout=30.0)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("DROP TABLE IF EXISTS ai_reports")
+            cursor.execute("DROP TABLE IF EXISTS order_history")
+            cursor.execute("DROP TABLE IF EXISTS orders")
+            cursor.execute("DROP TABLE IF EXISTS customers")
+            conn.commit()
+            conn.close()
+        else:
+            conn = get_mysql_connection()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+                    cursor.execute("DROP TABLE IF EXISTS ai_reports")
+                    cursor.execute("DROP TABLE IF EXISTS order_history")
+                    cursor.execute("DROP TABLE IF EXISTS orders")
+                    cursor.execute("DROP TABLE IF EXISTS customers")
+                    cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+                conn.commit()
+            finally:
+                conn.close()
+        return seed_database()
+    except Exception as e:
+        return False, f"Database reset failed: {e}"
+
 
 # Helper DB Queries
 def get_customer(customer_id):

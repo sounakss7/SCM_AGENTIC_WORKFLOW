@@ -40,19 +40,33 @@ def get_llm_client(prefer: str = None):
                 temperature=0.1
             ), "Gemini 2.5 Flash"
         except Exception as e:
-            if hasattr(st, "warning"):
-                st.warning(f"Failed to initialize Gemini, falling back to Groq. Error: {e}")
+            try:
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash", 
+                    google_api_key=gemini_key,
+                    temperature=0.1
+                ), "Gemini 1.5 Flash"
+            except Exception:
+                if hasattr(st, "warning"):
+                    st.warning(f"Failed to initialize Gemini, falling back to Groq. Error: {e}")
             
     if groq_key:
         try:
             return ChatGroq(
-                model="mixtral-8x7b-32768", 
+                model="llama-3.3-70b-versatile", 
                 groq_api_key=groq_key,
                 temperature=0.1
-            ), "Groq Mixtral"
+            ), "Groq Llama 3.3"
         except Exception as e:
-            if hasattr(st, "warning"):
-                st.warning(f"Failed to initialize Groq. Error: {e}")
+            try:
+                return ChatGroq(
+                    model="llama-3.1-8b-instant", 
+                    groq_api_key=groq_key,
+                    temperature=0.1
+                ), "Groq Llama 3.1"
+            except Exception:
+                if hasattr(st, "warning"):
+                    st.warning(f"Failed to initialize Groq. Error: {e}")
             
     if gemini_key:
         try:
@@ -66,10 +80,16 @@ def get_llm_client(prefer: str = None):
             
     return None, "Deterministic Fallback"
 
-# Robust JSON Extractor & Parser
+# Robust JSON Extractor & Parser with OutputGuard validation
 def parse_json_response(content: str, default_val: dict) -> dict:
     if not content or not isinstance(content, str):
         return default_val
+    
+    # 🔒 Enforce OutputGuard on raw output
+    if not SecurityGuards.OutputGuard(content):
+        print(f"OutputGuard rejected unsafe/error LLM response: {content[:80]}...")
+        return default_val
+        
     try:
         # Strip markdown code fences if present
         clean_content = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
@@ -80,8 +100,15 @@ def parse_json_response(content: str, default_val: dict) -> dict:
         end_idx = clean_content.rfind('}')
         if start_idx != -1 and end_idx != -1:
             json_str = clean_content[start_idx:end_idx+1]
-            return json.loads(json_str)
-        return json.loads(clean_content)
+            parsed = json.loads(json_str)
+        else:
+            parsed = json.loads(clean_content)
+            
+        # Enforce OutputGuard on parsed thought payload
+        if isinstance(parsed, dict) and "thoughts" in parsed:
+            if not SecurityGuards.OutputGuard(str(parsed["thoughts"])):
+                parsed["thoughts"] = default_val.get("thoughts", "")
+        return parsed
     except Exception as e:
         print(f"JSON Parse Error: {e}. Raw content: {content}")
         return default_val
@@ -93,6 +120,7 @@ def set_agent_running(name: str):
             st.session_state.agent_running = name
     except Exception:
         pass
+
 
 # ==========================================
 # SCM LLM-DRIVEN AGENT NODES

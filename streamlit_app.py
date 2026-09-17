@@ -21,8 +21,8 @@ from database.db_manager import (
     update_order_status,
     get_last_ai_report,
     save_ai_report,
-    get_mysql_connection,
-    insert_new_customer
+    insert_new_customer,
+    reset_database
 )
 from agents.workflow import SCMState, scm_workflow_graph, orchestration_edge_router
 from agents.nodes import (
@@ -115,7 +115,7 @@ with st.sidebar:
         "Groq API Key", 
         value=st.session_state.groq_api_key, 
         type="password",
-        help="Required for Groq Mixtral speed-routing logic and text analysis."
+        help="Required for Groq Llama 3.3 speed-routing logic and text analysis."
     )
     if groq_key_input != st.session_state.groq_api_key:
         st.session_state.groq_api_key = groq_key_input
@@ -123,7 +123,7 @@ with st.sidebar:
     st.session_state.routing_preference = st.selectbox(
         "Preferred AI Router",
         options=["gemini", "groq"],
-        format_func=lambda x: "Google Gemini (Recommended)" if x == "gemini" else "Groq Mixtral Network"
+        format_func=lambda x: "Google Gemini (Recommended)" if x == "gemini" else "Groq Llama 3.3 Network"
     )
     
     st.markdown("---")
@@ -181,12 +181,13 @@ with st.sidebar:
     else:
         st.info("ℹ️ Running SQLite Sandbox database. It is self-contained and pre-seeded automatically.")
         if st.button("🔄 Reset SQLite Database", use_container_width=True):
-            if os.path.exists("local_orders.db"):
-                try:
-                    os.remove("local_orders.db")
-                except:
-                    pass
-            st.session_state.db_initialized = False
+            success, msg = reset_database()
+            if success:
+                st.success("SQLite database reset and re-seeded successfully!")
+            else:
+                st.error(f"Reset failed: {msg}")
+            st.session_state.db_initialized = True
+            time.sleep(0.5)
             st.rerun()
             
     st.markdown("---")
@@ -253,8 +254,9 @@ with tab_control:
         st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
         st.markdown("**Sample Customer Guides:** `CUST-1001` (VIP) | `CUST-1002` (Premium) | `CUST-1003` (Standard) | `CUST-1004` (VIP)")
 
-    if cust_id_input:
-        customer = get_customer(cust_id_input)
+    if cust_id_input and cust_id_input.strip():
+        clean_cust_id = cust_id_input.strip().upper()
+        customer = get_customer(clean_cust_id)
         if customer:
             st.session_state.selected_customer = customer
             
@@ -262,6 +264,7 @@ with tab_control:
             st.markdown(f"""
                 <div class="scm-card">
                     <div class="scm-card-title">👤 Customer Profile: {customer['name']}</div>
+
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 0.5rem;">
                         <div><strong>Customer ID:</strong> {customer['customer_id']}</div>
                         <div><strong>Company:</strong> {customer['company']}</div>
@@ -475,13 +478,18 @@ with tab_control:
                     if not reg_name or not reg_address:
                         st.error("Please fill in the Full Name and Shipping Address fields.")
                     else:
-                        success, msg = insert_new_customer(cust_id_input.strip().upper(), reg_name, reg_email, reg_company, reg_address, reg_tier)
+                        clean_id = cust_id_input.strip().upper()
+                        success, msg = insert_new_customer(clean_id, reg_name, reg_email, reg_company, reg_address, reg_tier)
                         if success:
                             st.success(msg)
+                            st.session_state.selected_customer = get_customer(clean_id)
                             time.sleep(1.0)
                             st.rerun()
                         else:
                             st.error(msg)
+    else:
+        st.info("💡 Please enter a Customer ID above (e.g. `CUST-1001`) to load logistics profile, active orders, and the multi-agent runner.")
+
 
 
 # -----------------
@@ -599,11 +607,14 @@ with tab_report:
         st.markdown("---")
         
         if saved_report:
-            st.markdown(f"""
-                <div style="background-color: #0F172A; border: 1px solid #1E293B; border-radius: 12px; padding: 2rem; margin-top: 1rem; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.2);">
-                    {saved_report['report_text']}
-                </div>
-            """, unsafe_allow_html=True)
+            with st.container():
+                st.markdown(f"""
+                    <div class="scm-card" style="margin-top: 1rem; margin-bottom: 1.5rem;">
+                        <div class="scm-card-title">📊 Executive Logistics Report: {customer['company']} ({customer['name']})</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.markdown(saved_report['report_text'])
+
             
             st.download_button(
                 label="📥 Download Report as Markdown Text",

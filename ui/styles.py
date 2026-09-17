@@ -265,12 +265,16 @@ def render_timeline_html(history):
             agent_thoughts = {}
         
         # Select timeline classes
-        if is_last:
-            status_class = "active"
+        step_status = step.get("status", "")
+        if step_status == "Security Exception" or "Quarantine" in live_loc:
+            status_class = "failed"
         elif carrier_status == "Booking Rejected (Port Overcapacity/Strike)":
             status_class = "failed"
+        elif is_last:
+            status_class = "active"
         else:
             status_class = "completed"
+
             
         agent_name = ""
         thought = ""
