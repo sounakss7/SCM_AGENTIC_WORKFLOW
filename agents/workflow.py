@@ -1,81 +1,56 @@
-from typing import TypedDict, List, Dict, Any
-from langgraph.graph import StateGraph, END
-from agents.nodes import (
-    user_interface_agent,
-    supply_chain_intelligence_agent,
-    compliance_agent,
-    orchestration_agent,
-    external_entities_node
-)
+from typing import Dict, Any, Literal
+from langgraph.graph import StateGraph, START, END
 
-class SCMState(TypedDict):
-    order_id: str
-    customer_id: str
-    customer_tier: str
-    current_phase: str
-    inventory_status: str
-    route_selected: str
-    carrier_status: str
-    optimization_cycles: int
-    detected_disruptions: List[str]
-    audit_trail: List[Dict[str, Any]]
-    status: str
-    requires_correction: bool
-    simulate_disruption: bool
-    cost_savings: str
-    live_location: str
-    agent_thoughts: Dict[str, str]
+from agents.state import DisruptionState
+from agents.monitor import monitor_node
+from agents.risk_assessor import risk_assessor_node
+from agents.planner import planner_node
+from agents.critic import critic_node
+from agents.explainer import explainer_node
 
-def ui_edge_router(state: SCMState) -> str:
-    if state.get("status") == "Security Exception":
-        return "end"
-    return "intelligence_agent"
+def critic_router(state: DisruptionState) -> Literal["planner", "explainer"]:
+    """
+    Evaluates whether the critic rejected the plan and recommended a retry loop.
+    """
+    critic_verdict = state.get("critic_verdict")
+    if critic_verdict and critic_verdict.retry_recommended:
+        return "planner"
+    return "explainer"
 
-def orchestration_edge_router(state: SCMState) -> str:
-    if state.get("status") == "Security Exception":
-        return "end"
-    # Guard loopback to a maximum of 2 cycles to prevent infinite looping
-    if (
-        state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)"
-        and state.get("optimization_cycles", 0) <= 2
-    ):
-        return "loop_to_orchestration"
-    return "end"
-
-
-def build_scm_workflow():
-    workflow = StateGraph(SCMState)
+def build_scm_graph():
+    """
+    Constructs and compiles the cyclic LangGraph StateGraph for SCM Disruption Response.
     
-    workflow.add_node("ui_agent", user_interface_agent)
-    workflow.add_node("intelligence_agent", supply_chain_intelligence_agent)
-    workflow.add_node("compliance_agent", compliance_agent)
-    workflow.add_node("orchestration_agent", orchestration_agent)
-    workflow.add_node("external_entities", external_entities_node)
-    
-    workflow.set_entry_point("ui_agent")
-    
+    Flow:
+    START ➔ monitor ➔ risk_assessor ➔ planner ➔ critic
+                                         ▲          │
+                                         │(retry)   │(feasible)
+                                         └──────────┴──➔ explainer ➔ END
+    """
+    workflow = StateGraph(DisruptionState)
+
+    workflow.add_node("monitor", monitor_node)
+    workflow.add_node("risk_assessor", risk_assessor_node)
+    workflow.add_node("planner", planner_node)
+    workflow.add_node("critic", critic_node)
+    workflow.add_node("explainer", explainer_node)
+
+    workflow.add_edge(START, "monitor")
+    workflow.add_edge("monitor", "risk_assessor")
+    workflow.add_edge("risk_assessor", "planner")
+    workflow.add_edge("planner", "critic")
+
     workflow.add_conditional_edges(
-        "ui_agent",
-        ui_edge_router,
+        "critic",
+        critic_router,
         {
-            "intelligence_agent": "intelligence_agent",
-            "end": END
+            "planner": "planner",
+            "explainer": "explainer"
         }
     )
-    workflow.add_edge("intelligence_agent", "compliance_agent")
-    workflow.add_edge("compliance_agent", "orchestration_agent")
-    workflow.add_edge("orchestration_agent", "external_entities")
-    
-    workflow.add_conditional_edges(
-        "external_entities",
-        orchestration_edge_router,
-        {
-            "loop_to_orchestration": "orchestration_agent",
-            "end": END
-        }
-    )
-    
+
+    workflow.add_edge("explainer", END)
+
     return workflow.compile()
 
-scm_workflow_graph = build_scm_workflow()
-
+scm_graph = build_scm_graph()

@@ -1,0 +1,42 @@
+name: SCM Disruption Response Engine CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y coinor-cbc
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: Run unit test suite with pytest
+      run: |
+        python -m pytest tests/ -v
+
+    - name: Verify benchmark execution
+      run: |
+        python -c "from eval.run_benchmark import run_evaluation_benchmark; run_evaluation_benchmark(num_scenarios=5, seed=42)"

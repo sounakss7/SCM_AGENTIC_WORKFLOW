@@ -1,627 +1,329 @@
-import streamlit as st
 import os
+import sys
+import json
 import time
-from datetime import datetime
+import streamlit as st
+import pandas as pd
 from dotenv import load_dotenv
 
-# Load Environment Variables (.env)
 load_dotenv()
 
-# Modular SCM imports
-from database.db_manager import (
-    test_mysql_server,
-    init_database,
-    seed_database,
-    get_customer,
-    get_orders_by_customer,
-    get_order_history,
-    get_all_order_history,
-    save_order_history_record,
-    insert_new_order,
-    update_order_status,
-    get_last_ai_report,
-    save_ai_report,
-    insert_new_customer,
-    reset_database
-)
-from agents.workflow import SCMState, scm_workflow_graph, orchestration_edge_router
-from agents.nodes import (
-    get_llm_client,
-    user_interface_agent,
-    supply_chain_intelligence_agent,
-    compliance_agent,
-    orchestration_agent,
-    external_entities_node
-)
-from ui.styles import DARK_THEME_CSS, render_timeline_html, render_metrics_html
+# Add repository root to path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# ==========================================
-# 1. UI CONFIGURATION & THEME INJECTION
-# ==========================================
+from core.config import settings
+from core.schema import (
+    DisruptionEvent,
+    DisruptionType,
+    OptimizationConstraints,
+    CustomerTier
+)
+from core.data_loader import DataCoDataLoader
+from core.database import (
+    init_database,
+    get_audit_trail,
+    update_approval_status
+)
+from agents.workflow import scm_graph
+from ui.styles import DARK_THEME_CSS
+
+# Page Configuration
 st.set_page_config(
-    page_title="SCM Agentic Workflow Dashboard",
-    page_icon="🌐",
+    page_title="SCM Disruption Response Engine",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Inject Premium Dark Theme Styles
+# Apply Styling
 st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 
-# ==========================================
-# 2. SESSION STATE INITIALIZATION
-# ==========================================
-if "use_sqlite" not in st.session_state:
-    st.session_state.use_sqlite = True
-if "mysql_host" not in st.session_state:
-    st.session_state.mysql_host = "localhost"
-if "mysql_port" not in st.session_state:
-    st.session_state.mysql_port = "3306"
-if "mysql_user" not in st.session_state:
-    st.session_state.mysql_user = "root"
-if "mysql_password" not in st.session_state:
-    st.session_state.mysql_password = ""
-if "mysql_database" not in st.session_state:
-    st.session_state.mysql_database = "scm_agentic_db"
-if "db_initialized" not in st.session_state:
-    st.session_state.db_initialized = False
+# Initialize Session State
+init_database()
+if "last_plan_result" not in st.session_state:
+    st.session_state.last_plan_result = None
+if "pending_approval" not in st.session_state:
+    st.session_state.pending_approval = False
+if "scenario_id" not in st.session_state:
+    st.session_state.scenario_id = "SCEN-LIVE-01"
 
-# LLM API Keys
-if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
-if "groq_api_key" not in st.session_state:
-    st.session_state.groq_api_key = os.getenv("GROQ_API_KEY", "")
-if "routing_preference" not in st.session_state:
-    st.session_state.routing_preference = "gemini"
-
-# Simulation runtime variables
-if "selected_customer" not in st.session_state:
-    st.session_state.selected_customer = None
-if "workflow_history" not in st.session_state:
-    st.session_state.workflow_history = []
-if "agent_running" not in st.session_state:
-    st.session_state.agent_running = ""
-
-# Auto-initialize SQLite Sandbox if MySQL is not setup yet
-if not st.session_state.db_initialized:
-    try:
-        init_database()
-        seed_database()
-        st.session_state.db_initialized = True
-    except Exception as e:
-        st.error(f"Failed to auto-initialize SQLite Sandbox: {e}")
-
-# ==========================================
-# 3. SIDEBAR CONFIGURATION
-# ==========================================
+# Sidebar Configuration
 with st.sidebar:
-    st.image("ui/scm_logo.png", width=65)
-    st.title("SCM Agent Control")
-    st.markdown("Configure SCM Multi-Agent network parameters and storage layers.")
-    
-    st.markdown("---")
-    st.subheader("🔑 LLM Credentials")
-    
-    gemini_key_input = st.text_input(
-        "Gemini API Key", 
-        value=st.session_state.gemini_api_key, 
-        type="password",
-        help="Required for Gemini 2.5-flash agent modeling and AI executive summaries."
-    )
-    if gemini_key_input != st.session_state.gemini_api_key:
-        st.session_state.gemini_api_key = gemini_key_input
-        
-    groq_key_input = st.text_input(
-        "Groq API Key", 
-        value=st.session_state.groq_api_key, 
-        type="password",
-        help="Required for Groq Llama 3.3 speed-routing logic and text analysis."
-    )
-    if groq_key_input != st.session_state.groq_api_key:
-        st.session_state.groq_api_key = groq_key_input
-        
-    st.session_state.routing_preference = st.selectbox(
-        "Preferred AI Router",
-        options=["gemini", "groq"],
-        format_func=lambda x: "Google Gemini (Recommended)" if x == "gemini" else "Groq Llama 3.3 Network"
-    )
-    
-    st.markdown("---")
-    st.subheader("💾 Database Selection")
-    
-    db_mode = st.radio(
-        "Select Storage Layer",
-        options=["MySQL Server", "Local SQLite Sandbox (Dev Mode)"],
-        index=0 if not st.session_state.use_sqlite else 1
-    )
-    
-    is_sqlite = (db_mode == "Local SQLite Sandbox (Dev Mode)")
-    if is_sqlite != st.session_state.use_sqlite:
-        st.session_state.use_sqlite = is_sqlite
-        st.session_state.db_initialized = False
-        st.rerun()
-        
-    if not st.session_state.use_sqlite:
-        st.markdown("**MySQL Configuration Parameters:**")
-        mysql_host = st.text_input("MySQL Host", value=st.session_state.mysql_host)
-        mysql_port = st.text_input("MySQL Port", value=st.session_state.mysql_port)
-        mysql_user = st.text_input("MySQL User", value=st.session_state.mysql_user)
-        mysql_pass = st.text_input("MySQL Password", value=st.session_state.mysql_password, type="password")
-        mysql_db = st.text_input("Database Name", value=st.session_state.mysql_database)
-        
-        # Save credentials in session state
-        st.session_state.mysql_host = mysql_host
-        st.session_state.mysql_port = mysql_port
-        st.session_state.mysql_user = mysql_user
-        st.session_state.mysql_password = mysql_pass
-        st.session_state.mysql_database = mysql_db
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔌 Test Connection", use_container_width=True):
-                success, msg = test_mysql_server(mysql_host, mysql_port, mysql_user, mysql_pass)
-                if success:
-                    st.success("Connection Successful!")
-                else:
-                    st.error(f"Connection Errored: {msg}")
-        with col2:
-            if st.button("🏗️ Initialize Schema", use_container_width=True):
-                try:
-                    init_database()
-                    success, msg = seed_database()
-                    if success:
-                        st.success("MySQL schema seeded!")
-                        st.session_state.db_initialized = True
-                        st.rerun()
-                    else:
-                        st.error(msg)
-                except Exception as e:
-                    st.error(f"Init Error: {e}")
-                    
-    else:
-        st.info("ℹ️ Running SQLite Sandbox database. It is self-contained and pre-seeded automatically.")
-        if st.button("🔄 Reset SQLite Database", use_container_width=True):
-            success, msg = reset_database()
-            if success:
-                st.success("SQLite database reset and re-seeded successfully!")
-            else:
-                st.error(f"Reset failed: {msg}")
-            st.session_state.db_initialized = True
-            time.sleep(0.5)
-            st.rerun()
-            
-    st.markdown("---")
-    st.caption("🌐 Built with LangGraph & Streamlit 1.45")
+    st.image("ui/scm_logo.png", width=60)
+    st.title("SCM Control Tower")
+    st.caption("Deterministic Optimizer & Multi-Agent Disruption Engine")
+    st.divider()
 
-# ==========================================
-# 4. HEADER DESIGN
-# ==========================================
+    st.subheader("🔑 Engine Settings")
+    gemini_key = st.text_input("Gemini API Key", value=settings.GEMINI_API_KEY or "", type="password")
+    groq_key = st.text_input("Groq API Key", value=settings.GROQ_API_KEY or "", type="password")
+    
+    if gemini_key:
+        settings.GEMINI_API_KEY = gemini_key
+    if groq_key:
+        settings.GROQ_API_KEY = groq_key
+
+    st.selectbox(
+        "LLM Provider",
+        options=["gemini", "groq"],
+        index=0 if settings.ROUTING_PREFERENCE == "gemini" else 1,
+        help="Used strictly for natural language explanation of solver output. Zero arithmetic performed by LLM."
+    )
+
+    st.divider()
+    st.subheader("🛡️ Governance Policies")
+    st.metric("HITL Approval Threshold", f"${settings.HITL_APPROVAL_THRESHOLD_USD:,.2f}")
+    st.caption("Plans with recovery investment exceeding this threshold require dispatcher authorization.")
+    
+    st.divider()
+    st.markdown("**Core Specifications:**")
+    st.markdown("- **Dataset**: DataCo Smart Supply Chain (CC BY 4.0)")
+    st.markdown("- **Optimizer**: PuLP Mixed-Integer Linear Program (MILP)")
+    st.markdown("- **Orchestration**: LangGraph Cyclic StateGraph")
+
+# Header Banner
 st.markdown("""
-    <div class="header-container">
-        <div class="header-title">🌐 Autonomous Supply Chain Intelligence Engine</div>
-        <div class="header-subtitle">Multi-Agent SCM Orchestration System powered by LangGraph, Gemini & Groq</div>
-    </div>
+<div class="header-container">
+    <div class="header-title">⚡ SCM Autonomous Disruption Response Engine</div>
+    <div class="header-subtitle">Multi-Agent Disruption Perception & Deterministic MILP Recovery Optimizer</div>
+</div>
 """, unsafe_allow_html=True)
 
-# Connection diagnostics
-api_status_cols = st.columns(3)
-with api_status_cols[0]:
-    if st.session_state.gemini_api_key:
-        st.success("🟢 Gemini API Connection Enabled")
-    else:
-        st.warning("🟡 Gemini API Key is missing. Using Fallbacks.")
-with api_status_cols[1]:
-    if st.session_state.groq_api_key:
-        st.success("🟢 Groq API Connection Enabled")
-    else:
-        st.warning("🟡 Groq API Key is missing. Using Fallbacks.")
-with api_status_cols[2]:
-    if st.session_state.use_sqlite:
-        st.info("📦 Storage: SQLite Sandbox Active")
-    else:
-        try:
-            conn = get_mysql_connection()
-            conn.close()
-            st.success(f"🟢 Storage: MySQL Connected ({st.session_state.mysql_database})")
-        except:
-            st.error("🔴 Storage: MySQL Connection Failed. Check credentials in sidebar.")
-
-# ==========================================
-# 5. MAIN NAVIGATION TABS
-# ==========================================
-tab_control, tab_audit, tab_report = st.tabs([
-    "📈 SCM Control Center", 
-    "🛡️ Decision Audit Trail Logs", 
-    "📄 Executive AI Analytics Report"
+tab_command, tab_audit, tab_benchmarks = st.tabs([
+    "🚀 Disruption Command Center",
+    "🛡️ Decision Audit Ledger",
+    "📊 Empirical Benchmark (N=200)"
 ])
 
-# -----------------
-# TAB 1: SCM CONTROL CENTER
-# -----------------
-with tab_control:
-    st.markdown("### 🔍 Customer Order Profiler")
-    
-    # Customer Search
-    col_search, col_suggest = st.columns([2, 3])
-    with col_search:
-        cust_id_input = st.text_input(
-            "Enter Customer ID:", 
-            value="CUST-1001",
-            placeholder="e.g. CUST-1001",
-            help="Input a customer ID to load their profiles and active orders."
+# ==========================================
+# TAB 1: DISRUPTION COMMAND CENTER
+# ==========================================
+with tab_command:
+    col_input, col_preview = st.columns([1, 1])
+
+    with col_input:
+        st.markdown("### 💥 Disruption Scenario Setup")
+        disruption_type_str = st.selectbox(
+            "Disruption Event Type",
+            options=[d.value for d in DisruptionType],
+            index=0
         )
-    with col_suggest:
-        st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-        st.markdown("**Sample Customer Guides:** `CUST-1001` (VIP) | `CUST-1002` (Premium) | `CUST-1003` (Standard) | `CUST-1004` (VIP)")
+        dtype = DisruptionType(disruption_type_str)
 
-    if cust_id_input and cust_id_input.strip():
-        clean_cust_id = cust_id_input.strip().upper()
-        customer = get_customer(clean_cust_id)
-        if customer:
-            st.session_state.selected_customer = customer
-            
-            # Display Customer Profile Card
-            st.markdown(f"""
-                <div class="scm-card">
-                    <div class="scm-card-title">👤 Customer Profile: {customer['name']}</div>
+        col_loc, col_dur = st.columns(2)
+        with col_loc:
+            location = st.text_input("Disrupted Hub / Corridor", value="Port of Los Angeles")
+        with col_dur:
+            duration_days = st.slider("Estimated Disruption Duration (Days)", min_value=2, max_value=30, value=8)
 
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 0.5rem;">
-                        <div><strong>Customer ID:</strong> {customer['customer_id']}</div>
-                        <div><strong>Company:</strong> {customer['company']}</div>
-                        <div><strong>Email:</strong> {customer['email']}</div>
-                        <div><strong>SLA Tier:</strong> <span class="badge badge-{customer['tier'].lower()}">{customer['tier']}</span></div>
-                    </div>
-                    <div style="margin-top: 0.75rem;"><strong>Primary Shipping Address:</strong> {customer['address']}</div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Fetch orders
-            orders = get_orders_by_customer(customer['customer_id'])
-            
-            col_orders, col_simulator = st.columns([1, 1])
-            
-            with col_orders:
-                st.markdown("#### 📦 Order Logistics Book")
-                if orders:
-                    formatted_orders = []
-                    for o in orders:
-                        status_badge = ""
-                        if o['status'] in ["Fulfilled", "Delivered"]:
-                            status_badge = f"🟢 {o['status']}"
-                        elif o['status'] in ["Rerouted", "Processing"]:
-                            status_badge = f"🟡 {o['status']}"
-                        else:
-                            status_badge = f"🔴 {o['status']}"
-                        
-                        formatted_orders.append({
-                            "Order ID": o['order_id'],
-                            "Product Name": o['product_name'],
-                            "Qty": o['quantity'],
-                            "Total Value": f"${float(o['total_price']):,.2f}",
-                            "SLA Status": status_badge,
-                            "Order Date": o['order_date']
-                        })
-                    st.dataframe(formatted_orders, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("No orders found for this customer.")
-                
-                # Order booking form
-                st.markdown("#### ➕ Create New Ship Order")
-                with st.form("new_order_form"):
-                    prod_name = st.selectbox(
-                        "Select Product Item",
-                        ["Enterprise Server Array Model X", "IoT Temperature Sensor Hubs", "Robotic Sorting Arms", "Multi-Gigabit Router Units"]
-                    )
-                    qty = st.number_input("Order Quantity", min_value=1, max_value=5000, value=10)
-                    price_map = {
-                        "Enterprise Server Array Model X": 15000.00,
-                        "IoT Temperature Sensor Hubs": 30.00,
-                        "Robotic Sorting Arms": 24000.00,
-                        "Multi-Gigabit Router Units": 900.00
-                    }
-                    unit_price = price_map[prod_name]
-                    total_price = unit_price * qty
-                    
-                    st.markdown(f"**Unit Price:** ${unit_price:,.2f} | **Total Order Est. Cost:** ${total_price:,.2f}")
-                    
-                    submitted = st.form_submit_button("🛒 Submit & Book Logistics Order")
-                    if submitted:
-                        new_ord_id = f"ORD-{int(time.time()) % 100000}"
-                        insert_new_order(new_ord_id, customer['customer_id'], prod_name, qty, total_price)
-                        st.success(f"Order {new_ord_id} successfully saved to DB. Ready for SCM Agent evaluation!")
-                        time.sleep(0.5)
-                        st.rerun()
-            
-            with col_simulator:
-                st.markdown("#### ⚙️ Agentic SCM Runner")
-                st.markdown("Configure agentic variables to test system resiliency during port or logistics delays.")
-                
-                order_options = [o['order_id'] for o in orders if o['status'] != "Fulfilled"]
-                all_order_options = [o['order_id'] for o in orders]
-                
-                if not order_options:
-                    order_options = all_order_options
-                
-                if order_options:
-                    selected_order_id = st.selectbox("Select Order ID for AI Assessment:", options=order_options)
-                    simulate_disruption = st.checkbox(
-                        "💥 Simulate External Port Congestion (SLA Risk)", 
-                        value=False,
-                        help="Check this to simulate a carrier rejection / port overcapacity event. This triggers the agent's self-correcting routing loop!"
-                    )
-                    
-                    if st.button("🚀 Execute Multi-Agent Workflow", type="primary", use_container_width=True):
-                        # Initialize states
-                        initial_state: SCMState = {
-                            "order_id": selected_order_id,
-                            "customer_id": customer['customer_id'],
-                            "customer_tier": customer.get('tier', 'Standard'),
-                            "current_phase": "Initializing",
-                            "inventory_status": "Checking",
-                            "route_selected": "Pending Evaluation",
-                            "carrier_status": "Standby",
-                            "optimization_cycles": 0,
-                            "detected_disruptions": ["Severe Port Congestion (LA Port Terminal overload)"] if simulate_disruption else [],
-                            "audit_trail": [],
-                            "status": "Processing",
-                            "requires_correction": False,
-                            "simulate_disruption": simulate_disruption,
-                            "cost_savings": "$0.00 (Calculating...)",
-                            "live_location": "System Initiation",
-                            "agent_thoughts": {}
-                        }
-                        
-                        st.markdown("#### 🟢 Active Agent Operations Panel")
-                        timeline_placeholder = st.empty()
-                        metrics_placeholder = st.empty()
-                        
-                        with st.spinner("Agentic SCM Workflow processing..."):
-                            st.session_state.workflow_history = []
-                            current_state = dict(initial_state)
-                            
-                            # Stream from compiled LangGraph StateGraph
-                            for event in scm_workflow_graph.stream(initial_state):
-                                for node_name, state_updates in event.items():
-                                    current_state.update(state_updates)
-                                    
-                                    # Select details for ledger logging
-                                    agent_display_name = ""
-                                    phase_name = current_state.get("current_phase", "SCM Execution")
-                                    action_text = ""
-                                    model_used = "Deterministic Engine"
-                                    
-                                    agent_thoughts = current_state.get("agent_thoughts", {})
-                                    if node_name == "ui_agent":
-                                        agent_display_name = "UI (Customer Layer)"
-                                        action_text = agent_thoughts.get("ui_agent", "")
-                                    elif node_name == "intelligence_agent":
-                                        agent_display_name = "Supply Chain Intelligence"
-                                        action_text = agent_thoughts.get("intelligence_agent", "")
-                                        _, model_used = get_llm_client()
-                                        if not current_state.get("detected_disruptions"):
-                                            model_used = "Deterministic Engine"
-                                    elif node_name == "compliance_agent":
-                                        agent_display_name = "Verification & Compliance"
-                                        action_text = agent_thoughts.get("compliance_agent", "")
-                                        model_used = "Regulatory Sandbox Ruleset"
-                                    elif node_name == "orchestration_agent":
-                                        agent_display_name = "Process Orchestration"
-                                        action_text = agent_thoughts.get("orchestration_agent", "")
-                                        model_used = "Graph Node Algorithm"
-                                        if current_state.get("optimization_cycles", 0) > 0:
-                                            phase_name += " (Correction)"
-                                    elif node_name == "external_entities":
-                                        agent_display_name = "External Entities Node"
-                                        action_text = agent_thoughts.get("external_entities", "")
-                                        model_used = "Supply Chain Sim Port Engine"
-                                        if current_state.get("optimization_cycles", 0) > 0 and current_state.get("carrier_status") != "Booking Rejected (Port Overcapacity/Strike)":
-                                            phase_name += " (Final Booking)"
-                                            
-                                    # Log each agent node execution to DB
-                                    save_order_history_record(
-                                        current_state["order_id"],
-                                        phase_name,
-                                        agent_display_name,
-                                        action_text,
-                                        model_used,
-                                        current_state.get("cost_savings", "$0.00"),
-                                        current_state.get("live_location", "Origin Point")
-                                    )
-                                    
-                                    # Append state for UI timeline rendering
-                                    st.session_state.workflow_history.append(dict(current_state))
-                                    timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                                    metrics_placeholder.markdown(render_metrics_html(current_state), unsafe_allow_html=True)
-                                    
-                                    # Add custom visual delays between agent steps
-                                    if node_name == "ui_agent":
-                                        time.sleep(0.8)
-                                    elif node_name == "intelligence_agent":
-                                        time.sleep(1.0)
-                                    elif node_name == "compliance_agent":
-                                        time.sleep(0.6)
-                                    elif node_name == "orchestration_agent":
-                                        time.sleep(0.8)
-                                    elif node_name == "external_entities":
-                                        if current_state.get("carrier_status") == "Booking Rejected (Port Overcapacity/Strike)":
-                                            st.warning("🔄 Disruption Event Detected: Loopback Self-Correction Protocol Triggered!")
-                                        time.sleep(0.8)
-                                        
-                            update_order_status(current_state["order_id"], current_state["status"])
-                            
-                        if current_state.get("status") == "Security Exception":
-                            st.error(f"🚨 SCM Security Exception: Order {selected_order_id} flagged and quarantined by Security Guard Layer.")
-                        else:
-                            st.success(f"SCM Workflow assessment complete for Order {selected_order_id}!")
-                        
-                        # Render metrics and timeline
-                        metrics_placeholder.markdown(render_metrics_html(current_state), unsafe_allow_html=True)
-                        timeline_placeholder.markdown(render_timeline_html(st.session_state.workflow_history), unsafe_allow_html=True)
-                        
-                else:
-                    st.info("No orders currently active. Create an order above to test.")
-        else:
-            st.error(f"❌ Customer ID '{cust_id_input}' not found in the database.")
-            st.markdown("### 👤 Register New SCM Customer")
-            st.markdown("Complete the form below to add this customer to the database.")
-            
-            with st.form("register_customer_form"):
-                reg_cust_id = st.text_input("Customer ID", value=cust_id_input.strip().upper(), disabled=True)
-                reg_name = st.text_input("Full Name", placeholder="e.g. John Doe")
-                reg_company = st.text_input("Company Name", placeholder="e.g. Apex Industries")
-                reg_email = st.text_input("Email Address", placeholder="e.g. john@apex.com")
-                reg_address = st.text_area("Primary Shipping Address", placeholder="e.g. 100 Main St, Austin, TX 78701")
-                reg_tier = st.selectbox("SLA Priority Tier", ["VIP", "Premium", "Standard"])
-                
-                submitted_reg = st.form_submit_button("💾 Register & Save Customer")
-                if submitted_reg:
-                    if not reg_name or not reg_address:
-                        st.error("Please fill in the Full Name and Shipping Address fields.")
-                    else:
-                        clean_id = cust_id_input.strip().upper()
-                        success, msg = insert_new_customer(clean_id, reg_name, reg_email, reg_company, reg_address, reg_tier)
-                        if success:
-                            st.success(msg)
-                            st.session_state.selected_customer = get_customer(clean_id)
-                            time.sleep(1.0)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-    else:
-        st.info("💡 Please enter a Customer ID above (e.g. `CUST-1001`) to load logistics profile, active orders, and the multi-agent runner.")
+        severity = st.slider("Disruption Severity Factor", min_value=0.1, max_value=1.0, value=0.85, step=0.05)
+        description = st.text_area(
+            "Disruption Bulletin / Description",
+            value="Critical labor dispute and vessel backlog causing extensive container terminal congestion."
+        )
 
+        col_opt1, col_opt2 = st.columns(2)
+        with col_opt1:
+            order_sample_count = st.number_input("At-Risk Shipments Count", min_value=5, max_value=50, value=12)
+        with col_opt2:
+            air_cap = st.number_input("Express Air Cargo Quota (Units)", min_value=20, max_value=500, value=150)
 
-
-# -----------------
-# TAB 2: DECISION AUDIT TRAIL LOGS
-# -----------------
-with tab_audit:
-    st.markdown("### 🛡️ Immutable SCM Ledger Audit Trail")
-    st.markdown("Every node decision, safety guard assessment, and external status update is securely recorded to the MySQL database engine.")
-    
-    col_audit_opt, _ = st.columns([2, 3])
-    with col_audit_opt:
-        search_filter = st.text_input("Filter logs by Order ID / Agent Name:", placeholder="e.g. ORD-5003")
+    with col_preview:
+        st.markdown("### 📦 Vulnerable Cargo Preview (DataCo Dataset)")
+        loader = DataCoDataLoader()
+        preview_orders = loader.sample_active_orders(n=order_sample_count, random_seed=42)
         
-    logs = get_all_order_history()
-    
-    if logs:
-        filtered_logs = []
-        for l in logs:
-            if search_filter:
-                match_str = f"{l['order_id']} {l['agent_name']} {l['phase']} {l['action']}".lower()
-                if search_filter.lower() not in match_str:
-                    continue
-            filtered_logs.append({
-                "Timestamp": l['timestamp'],
-                "Order ID": l['order_id'],
-                "Phase": l['phase'],
-                "Agent Name": l['agent_name'],
-                "Model Used": l['model_used'],
-                "Carrier Location": l['live_location'],
-                "Dynamic Savings": l['cost_savings'],
-                "Agent Core Action & Details": l['action']
+        preview_data = []
+        for o in preview_orders:
+            preview_data.append({
+                "Order ID": o.order_id,
+                "Customer": o.customer_id,
+                "Tier": o.customer_tier.value,
+                "Product": o.product_name[:28] + "...",
+                "Qty": o.quantity,
+                "Value ($)": f"${o.total_value:,.2f}",
+                "Sched Days": o.scheduled_days,
+                "Penalty/Day": f"${o.daily_late_penalty_rate:,.2f}"
             })
-            
-        if filtered_logs:
-            st.dataframe(filtered_logs, use_container_width=True, hide_index=True)
-        else:
-            st.info("No logs match the search query.")
-    else:
-        st.warning("Decision ledger is currently empty. Run SCM simulation cycles to generate logs.")
+        st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
 
-# -----------------
-# TAB 3: EXECUTIVE AI ANALYTICS REPORT
-# -----------------
-with tab_report:
-    st.markdown("### 📄 Executive Supply Chain SCM AI Report")
-    st.markdown("Generate a high-fidelity intelligence report analyzing recent shipping logs, disruption histories, and route optimizations for the selected customer.")
+    st.markdown("---")
     
-    if st.session_state.selected_customer:
-        customer = st.session_state.selected_customer
-        saved_report = get_last_ai_report(customer['customer_id'])
-        
-        col_rep_btn, col_rep_info = st.columns([1, 2])
-        with col_rep_btn:
-            if st.button("🧠 Generate Executive AI Summary", type="primary", use_container_width=True):
-                # Fetch customer orders & log history
-                cust_orders = get_orders_by_customer(customer['customer_id'])
-                all_logs = []
-                for o in cust_orders:
-                    all_logs.extend(get_order_history(o['order_id']))
-                
-                order_summary_str = ""
-                for o in cust_orders:
-                    order_summary_str += f"- Order {o['order_id']}: Product={o['product_name']}, Qty={o['quantity']}, Value=${o['total_price']}, Status={o['status']}\n"
-                    
-                logs_summary_str = ""
-                for l in all_logs[:15]:
-                    logs_summary_str += f"- [{l['timestamp']}] Order {l['order_id']} | Agent: {l['agent_name']} | Action: {l['action']} | Location: {l['live_location']} | Savings: {l['cost_savings']} | Model: {l['model_used']}\n"
-                
-                model, model_name = get_llm_client(prefer=st.session_state.routing_preference)
-                if model:
-                    with st.spinner("Compiling database records and generating analysis report..."):
-                        try:
-                            prompt = f"""
-                            You are the Director of Autonomous SCM Analytics. Generate an executive Supply Chain Health & Resiliency Report for the following customer.
-                            
-                            ### CUSTOMER PROFILE
-                            - Name: {customer['name']}
-                            - Company: {customer['company']}
-                            - Tier: {customer['tier']}
-                            - Address: {customer['address']}
-                            
-                            ### ACTIVE & PAST ORDERS
-                            {order_summary_str}
-                            
-                            ### LOGISTICS AUDIT TRAIL LOGS
-                            {logs_summary_str}
-                            
-                            ### REPORT REQUIREMENT INSTRUCTIONS:
-                            Write a highly professional, elegant and comprehensive Supply Chain Performance Report in markdown format. Use bullet points and clean structure:
-                            1. **Executive Operational Summary**: SCM health evaluation and overall reliability index (e.g. 98%).
-                            2. **Risk & Sourcing Vulnerability Assessment**: Highlight recent disruption events (like port congestion), and how agents resolved them autonomously.
-                            3. **Cost-Savings & Return-On-Investment (ROI)**: Quantify accumulated savings from dynamic rerouting, carriers volume discount, and SLA penalty avoidance.
-                            4. **Strategic Recommendations**: Provide actionable next-quarter sourcing recommendations based on customer tier rules and global trade forecasts.
-                            
-                            Maintain an extremely polished corporate tone. Do not use conversational filler.
-                            """
-                            response = model.invoke(prompt)
-                            report_content = str(response.content)
-                            
-                            save_ai_report(customer['customer_id'], report_content, model_name)
-                            st.success("Executive AI Report compiled and saved to database!")
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Report generation errored: {e}")
-                else:
-                    st.error("❌ No LLM API connection active. Please input a Gemini or Groq API Key in the sidebar to enable AI Report generation.")
-                    
-        with col_rep_info:
-            if saved_report:
-                st.markdown(f"**Last Compiled:** `{saved_report['created_at']}` | **Model Engine:** `{saved_report['model_used']}`")
-            else:
-                st.info("No report exists in database for this customer yet. Click the button to compile one.")
-                
-        st.markdown("---")
-        
-        if saved_report:
-            with st.container():
-                st.markdown(f"""
-                    <div class="scm-card" style="margin-top: 1rem; margin-bottom: 1.5rem;">
-                        <div class="scm-card-title">📊 Executive Logistics Report: {customer['company']} ({customer['name']})</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.markdown(saved_report['report_text'])
+    if st.button("🚀 Execute Autonomous Multi-Agent Resolution", type="primary", use_container_width=True):
+        scen_id = f"SCEN-{int(time.time()) % 100000:05d}"
+        st.session_state.scenario_id = scen_id
 
-            
-            st.download_button(
-                label="📥 Download Report as Markdown Text",
-                data=saved_report['report_text'],
-                file_name=f"SCM_Executive_Report_{customer['customer_id']}.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
+        event = DisruptionEvent(
+            event_id=f"EVT-{scen_id}",
+            disruption_type=dtype,
+            location=location,
+            severity=severity,
+            duration_days=duration_days,
+            affected_warehouse="Pacific_Hub_LA",
+            description=description
+        )
+
+        constraints = OptimizationConstraints(
+            max_air_freight_units=int(air_cap)
+        )
+
+        init_state = {
+            "scenario_id": scen_id,
+            "disruption_event": event,
+            "affected_orders": preview_orders,
+            "risk_assessment": None,
+            "constraints": constraints,
+            "optimized_plan": None,
+            "critic_verdict": None,
+            "explanation": "",
+            "requires_human_approval": False,
+            "approval_status": "AUTO_APPROVED",
+            "retry_count": 0,
+            "llm_call_count": 0,
+            "audit_trail": []
+        }
+
+        with st.spinner("Orchestrating agents (Monitor ➔ Risk Assessor ➔ PuLP Solver ➔ Critic ➔ Explainer)..."):
+            final_state = scm_graph.invoke(init_state)
+            st.session_state.last_plan_result = final_state
+
+    # Render Results if Available
+    if st.session_state.last_plan_result:
+        res = st.session_state.last_plan_result
+        plan = res.get("optimized_plan")
+        risk = res.get("risk_assessment")
+        critic = res.get("critic_verdict")
+
+        st.markdown("## 📈 Resolution Metrics & Solver Telemetry")
+
+        # KPI Metrics
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        with col_m1:
+            st.metric("Total Landed Cost", f"${plan.total_combined_cost:,.2f}")
+        with col_m2:
+            st.metric("Recovery Investment", f"${plan.total_recovery_cost:,.2f}")
+        with col_m3:
+            net_saved = max(0.0, risk.base_penalty_exposure - plan.total_combined_cost) if risk else 0.0
+            st.metric("Prevented Loss / Savings", f"${net_saved:,.2f}")
+        with col_m4:
+            st.metric("Service Level (% On-Time)", f"{plan.service_level_pct:.1f}%")
+
+        col_sub1, col_sub2, col_sub3 = st.columns(3)
+        with col_sub1:
+            st.caption(f"**Solver Status**: `{plan.status}` (Runtime: {plan.solver_time_sec*1000:.1f}ms)")
+        with col_sub2:
+            air_u = plan.capacity_utilization.get("air_freight_used_units", 0)
+            st.caption(f"**Air Freight Utilized**: `{air_u} / {air_cap} units`")
+        with col_sub3:
+            st.caption(f"**Feasibility**: `{'Verified Feasible' if plan.is_feasible else 'Infeasible'}`")
+
+        # Human-in-the-Loop (HITL) Governance Card
+        if res.get("requires_human_approval"):
+            st.warning("⚠️ **Human-in-the-Loop Governance Triggered**: High-value recovery investment exceeds policy threshold ($5,000.00).")
+            col_hitl_info, col_hitl_act1, col_hitl_act2 = st.columns([3, 1, 1])
+            with col_hitl_info:
+                st.markdown(f"**Plan ID:** `{plan.plan_id}` | **Current Status:** `{res.get('approval_status')}`")
+            with col_hitl_act1:
+                if st.button("✅ Approve Plan", type="primary", use_container_width=True):
+                    update_approval_status(res["scenario_id"], "APPROVED")
+                    res["approval_status"] = "APPROVED"
+                    res["requires_human_approval"] = False
+                    st.success("Plan Approved and logged to immutable audit ledger!")
+                    time.sleep(0.5)
+                    st.rerun()
+            with col_hitl_act2:
+                if st.button("❌ Reject Plan", use_container_width=True):
+                    update_approval_status(res["scenario_id"], "REJECTED")
+                    res["approval_status"] = "REJECTED"
+                    res["requires_human_approval"] = False
+                    st.error("Plan Rejected by dispatcher.")
+                    time.sleep(0.5)
+                    st.rerun()
+
+        # Explainer Card
+        st.markdown("### 📝 Plain-English Operational Rationale")
+        st.info(res.get("explanation", "Rationale unavailable."))
+
+        # Allocations Table
+        st.markdown("### 📋 Mathematical Order Allocations (PuLP Output)")
+        alloc_rows = []
+        for a in plan.allocations:
+            alloc_rows.append({
+                "Order ID": a.order_id,
+                "Product": a.product_name,
+                "Qty": a.quantity,
+                "Recovery Action": a.selected_action.value,
+                "Intervention Cost ($)": f"${a.recovery_cost:,.2f}",
+                "Delay Days": f"{a.expected_delay_days}d",
+                "Penalty ($)": f"${a.incurred_penalty:,.2f}",
+                "Total Loss ($)": f"${a.total_cost:,.2f}",
+                "Fulfillment Node": a.fulfillment_node,
+                "On-Time": "✅ Yes" if a.on_time else "❌ No"
+            })
+        st.dataframe(pd.DataFrame(alloc_rows), use_container_width=True, hide_index=True)
+
+        # Execution Trace Expander
+        with st.expander("🔄 View Multi-Agent State Execution Trace"):
+            for entry in res.get("audit_trail", []):
+                st.markdown(f"**[{entry.get('phase')}]** `{entry.get('agent')}`: {entry.get('action')}")
+                st.caption(entry.get('details', ''))
+
+# ==========================================
+# TAB 2: DECISION AUDIT LEDGER
+# ==========================================
+with tab_audit:
+    st.markdown("### 🛡️ Immutable SCM Decision Audit Ledger")
+    st.markdown("Every agent action, solver execution, and Human-in-the-Loop decision is logged with timestamps.")
+
+    logs = get_audit_trail(limit=50)
+    if logs:
+        st.dataframe(pd.DataFrame(logs), use_container_width=True, hide_index=True)
     else:
-        st.warning("Select or search a valid Customer ID on the Control Center tab first.")
+        st.info("No audit logs recorded yet. Execute a disruption scenario to populate the ledger.")
+
+# ==========================================
+# TAB 3: EMPIRICAL BENCHMARK (N=200)
+# ==========================================
+with tab_benchmarks:
+    st.markdown("### 📊 Empirical Benchmark Evaluation Suite (N=200 Scenarios)")
+    st.markdown("Controlled comparison across 4 strategies generated from fixed random seeds (`seed=42`) on the DataCo dataset.")
+
+    results_path = os.path.join(os.path.dirname(__file__), "results", "results.json")
+    if os.path.exists(results_path):
+        with open(results_path, "r", encoding="utf-8") as f:
+            bench_data = json.load(f)
+
+        summary_rows = bench_data.get("summary", [])
+        meta = bench_data.get("benchmark_metadata", {})
+
+        st.caption(f"**Evaluated Scenarios**: {meta.get('num_scenarios', 200)} | **Random Seed**: {meta.get('random_seed', 42)} | **Execution Time**: {meta.get('total_benchmark_duration_sec', 0):.2f}s")
+        
+        # Summary Table
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+        # Comparative Visualizations
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.markdown("#### 💰 Total Landed Cost Comparison ($)")
+            cost_df = pd.DataFrame({
+                "Strategy": [r["Strategy"] for r in summary_rows],
+                "Total Cost ($)": [r["Total Cost ($)"] for r in summary_rows]
+            }).set_index("Strategy")
+            st.bar_chart(cost_df)
+
+        with col_c2:
+            st.markdown("#### 🛡️ Constraint Feasibility Rate (%)")
+            feas_df = pd.DataFrame({
+                "Strategy": [r["Strategy"] for r in summary_rows],
+                "Plan Feasibility (%)": [r["Plan Feasibility (%)"] for r in summary_rows]
+            }).set_index("Strategy")
+            st.bar_chart(feas_df)
+
+    else:
+        st.warning("Benchmark results file not found. Click below to execute the 200-scenario benchmark suite.")
+        if st.button("🧪 Run N=200 Benchmark Suite Now"):
+            from eval.run_benchmark import run_evaluation_benchmark
+            with st.spinner("Executing 200 comparative scenarios..."):
+                run_evaluation_benchmark(num_scenarios=200, seed=42)
+            st.success("Benchmark completed! Reloading dashboard...")
+            st.rerun()
