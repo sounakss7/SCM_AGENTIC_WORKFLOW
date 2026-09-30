@@ -50,10 +50,10 @@ flowchart TD
 | Agent | Responsibility | Assigned Provider | Model | Latency |
 |---|---|---|---|---|
 | **Monitor Agent** | Watches disruption feeds against active order legs | Deterministic Python | Local Rule Engine | <1 ms |
-| **Risk Assessor** | Assesses operational disruption, stockout liability, SLA penalties | **Google DeepMind** | `gemini-2.5-flash` | ~40 ms |
+| **Risk Assessor** | Assesses operational disruption, stockout liability, SLA penalties | **Google DeepMind** | `gemini-2.5-flash` / `gemini-3.5-flash-lite` | ~40 ms |
 | **Routing Agent** | Triggers constraint search over network graph | **Deterministic Core** | Exhaustive OR Solver | <5 ms |
-| **Validator Agent** | Fast physical verification (carrier allocation, warehouse cap, SLA ceiling) | **Groq LPU** | `llama-3.3-70b-versatile` | ~13 ms |
-| **Explainer Agent** | Executive summary in INR (₹) strictly preserving audited figures | **Google DeepMind** | `gemini-2.5-flash` | ~40 ms |
+| **Validator Agent** | Fast physical verification (carrier allocation, warehouse cap, SLA ceiling) | **Groq LPU** | `qwen/qwen3.8-27b` / `openai/gpt-oss-20b` | ~13 ms |
+| **Explainer Agent** | Executive summary in INR (₹) strictly preserving audited figures | **Google DeepMind** | `gemini-2.5-flash` / `gemini-3.5-flash-lite` | ~40 ms |
 
 ---
 
@@ -142,14 +142,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment Keys (Optional)
-The system contains an automated local emulator for offline testing. To connect live Cloud APIs:
+### 2. Configure Environment Keys
+The system automatically reads API keys from `.env` using `python-dotenv`:
 ```bash
 cp .env.example .env
-# Edit .env and supply:
-# GEMINI_API_KEY=your_key_here
-# GROQ_API_KEY=your_key_here
+# Edit .env:
+GOOGLE_API_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 ```
+*Note: If API keys are omitted or offline, the system automatically falls back to an audited local deterministic emulator, ensuring all tests and benchmarks run reliably anywhere.*
 
 ### 3. Run Pytest Suite (20 Tests)
 ```bash
