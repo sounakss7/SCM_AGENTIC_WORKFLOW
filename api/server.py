@@ -1,146 +1,156 @@
-"""FastAPI Application Server for Multi-Echelon Supply Chain Control Tower."""
+"""FastAPI Application Server for Indian Supply Chain Resilience Agent.
+
+Exposes REST endpoints:
+- GET  /health           : Health & multi-model router liveness
+- GET  /network          : Indian network topology, carriers, and 25 FMCG SKUs
+- POST /simulate         : End-to-end order simulation with 5-agent resilience workflow
+- POST /disrupt          : Inject disruption (carrier failure, port congestion, road closure)
+- GET  /plan/{scenario_id}: Retrieve plan details for a specific benchmark scenario or incident
+- GET  /catalog/disruptions: Pre-defined Indian supply chain disruptions
+"""
 
 import os
 import json
 from typing import Dict, List, Any, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path
 from pydantic import BaseModel, Field
 
-from core.network import MultiEchelonNetwork, get_default_network
-from forecasting.forecaster import forecaster
-from agents.state import DisruptionEvent
-from agents.workflow import run_control_tower_pipeline
-from eval.benchmark_scenarios import generate_200_scenarios
+from core.network import (
+    NETWORK, SUPPLIERS_DB, PORTS_DB, WAREHOUSES_DB, RETAILERS_DB, CARRIERS_DB, SKUS_DB,
+    get_default_indian_network
+)
+from core.disruptions import (
+    DisruptionEvent, DisruptionType, SeverityLevel, get_predefined_disruptions
+)
+from optimizer.resilience_solver import find_optimal_alternate_route
+from agents.workflow import run_resilience_workflow
 
 app = FastAPI(
-    title="Multi-Echelon Supply Chain Control Tower",
-    description="Autonomous cooperating LangGraph agents with a deterministic MILP optimization core for multi-echelon replenishment and disruption management.",
-    version="3.0.0"
+    title="Indian Supply Chain Resilience Agent API",
+    description="5-Agent LangGraph System with Deterministic OR Solver Core for Indian freight corridors under disruption.",
+    version="1.0.0"
 )
 
 
-class ForecastRequest(BaseModel):
-    horizon_length: int = Field(default=4, ge=1, le=12)
+class SimulationRequest(BaseModel):
+    order_id: str = Field(default="ORD-API-001", description="Unique order reference")
+    sku_id: str = Field(default="SKU_01", description="SKU identifier (e.g. SKU_01 to SKU_25)")
+    quantity: int = Field(default=100, ge=1, le=1000, description="Order shipment quantity")
+    source_supplier: str = Field(default="SUP_PUNE", description="Origin supplier node ID")
+    target_retailer: str = Field(default="RET_MUMBAI", description="Destination retailer node ID")
+    disruption: Optional[Dict[str, Any]] = Field(default=None, description="Optional disruption event")
 
 
-class PlanRequest(BaseModel):
-    max_negotiation_rounds: int = Field(default=2, ge=1, le=5)
-
-
-class DisruptRequest(BaseModel):
-    disruption_type: str = Field(..., description="SUPPLIER_DELAY, PORT_CONGESTION, DEMAND_SPIKE, or WAREHOUSE_CAPACITY_LOSS")
-    affected_entity: str = Field(..., description="e.g., 'S1', 'W1', or 'R1'")
-    severity_factor: float = Field(default=2.0, ge=0.1)
-    duration_periods: int = Field(default=2, ge=1)
-    description: Optional[str] = "Operational disruption injected via Control Tower API."
+class DisruptionInjectionRequest(BaseModel):
+    disruption_type: DisruptionType = Field(..., description="CARRIER_FAILURE, PORT_CONGESTION, ROUTE_CLOSURE, CAPACITY_CHOKE")
+    target_type: str = Field(..., description="'CARRIER', 'PORT', or 'LINK'")
+    target_id: str = Field(..., description="e.g. 'SAFEXPRESS', 'PORT_JNPT', or 'L_JNPT_DEL'")
+    severity: SeverityLevel = Field(default=SeverityLevel.HIGH)
+    delay_days_added: float = Field(default=3.0, ge=0.0)
+    cost_surcharge_pct: float = Field(default=30.0, ge=0.0)
+    capacity_reduction_pct: float = Field(default=80.0, ge=0.0, le=100.0)
+    description: str = Field(default="Injected disruption via API.")
+    test_order_sku: str = Field(default="SKU_01")
+    test_order_qty: int = Field(default=100)
 
 
 @app.get("/health")
-def health_endpoint():
-    """System liveness and configuration health check."""
+def health_check():
+    """System status and agentic routing health."""
     return {
         "status": "healthy",
-        "app_name": "Multi-Echelon Supply Chain Control Tower",
-        "version": "3.0.0",
-        "optimizer": "PuLP / CBC Branch-and-Bound",
-        "ml_forecaster": "LightGBM / Gradient Boosting"
+        "service": "Indian Supply Chain Resilience Agent",
+        "version": "1.0.0",
+        "agents": ["Monitor", "Risk Assessor (Gemini 2.5 Flash)", "Routing (OR Solver)", "Validator (Groq LPU)", "Explainer (Gemini 2.5 Flash)"],
+        "currency": "INR (₹)"
     }
 
 
 @app.get("/network")
-def network_topology_endpoint():
-    """Return the physical multi-echelon network topology (suppliers, warehouses, stores, SKUs)."""
-    net = get_default_network()
+def get_network_topology():
+    """Return complete Indian logistics network nodes, links, carriers, and 25 FMCG SKUs."""
+    net = get_default_indian_network()
     return net.model_dump()
 
 
-@app.post("/forecast")
-def forecast_endpoint(req: ForecastRequest = ForecastRequest()):
-    """Generate multi-period demand forecasts with uncertainty bounds and backtest accuracy."""
-    forecasts = forecaster.predict_horizon(horizon_length=req.horizon_length)
-    formatted = [
-        {
-            "store_id": k[0],
-            "sku_id": k[1],
-            "period": k[2],
-            "point_forecast": v["point_forecast"],
-            "lower_bound_80": v["lower_bound_80"],
-            "upper_bound_80": v["upper_bound_80"],
-            "std_dev": v["std_dev"]
-        }
-        for k, v in forecasts.items()
-    ]
-
-    return {
-        "horizon_periods": req.horizon_length,
-        "backtest_metrics": forecaster.metrics_report,
-        "forecasts": formatted
-    }
+@app.get("/catalog/disruptions")
+def list_disruption_catalog():
+    """List predefined Indian logistics disruption events."""
+    events = get_predefined_disruptions()
+    return [e.model_dump() for e in events]
 
 
-@app.post("/plan")
-def plan_endpoint(req: PlanRequest = PlanRequest()):
-    """Execute multi-agent negotiation and deterministic MILP replenishment optimization."""
-    final_state = run_control_tower_pipeline(max_rounds=req.max_negotiation_rounds)
-    sol = final_state.get("joint_solution")
+@app.post("/simulate")
+def simulate_order(req: SimulationRequest):
+    """Execute the full 5-agent LangGraph resilience workflow for an order."""
+    if req.source_supplier not in SUPPLIERS_DB:
+        raise HTTPException(status_code=400, detail=f"Supplier '{req.source_supplier}' not found in network.")
+    if req.target_retailer not in RETAILERS_DB:
+        raise HTTPException(status_code=400, detail=f"Retailer '{req.target_retailer}' not found in network.")
+    if req.sku_id not in SKUS_DB:
+        raise HTTPException(status_code=400, detail=f"SKU '{req.sku_id}' not found in network catalog.")
 
-    if not sol:
-        raise HTTPException(status_code=500, detail="Failed to generate optimal multi-echelon plan.")
-
-    return {
-        "solution": sol.model_dump(),
-        "negotiation_rounds_executed": len(final_state.get("negotiation_log", [])),
-        "negotiation_log": final_state.get("negotiation_log", []),
-        "plain_english_briefing": final_state.get("plain_english_briefing", "")
-    }
+    result = run_resilience_workflow(
+        order_id=req.order_id,
+        sku_id=req.sku_id,
+        quantity=req.quantity,
+        source_supplier=req.source_supplier,
+        target_retailer=req.target_retailer,
+        disruption=req.disruption
+    )
+    return result
 
 
 @app.post("/disrupt")
-def disrupt_endpoint(req: DisruptRequest):
-    """Inject a disruption, trigger multi-agent re-negotiation, and return cost delta."""
-    event = DisruptionEvent(
+def inject_disruption(req: DisruptionInjectionRequest):
+    """Inject a disruption into the network and trigger 5-agent self-correcting response."""
+    disruption = DisruptionEvent(
+        event_id="API-INJECTED-DIS",
         disruption_type=req.disruption_type,
-        affected_entity=req.affected_entity,
-        severity_factor=req.severity_factor,
-        duration_periods=req.duration_periods,
-        description=req.description or "Injected disruption"
+        target_type=req.target_type,
+        target_id=req.target_id,
+        severity=req.severity,
+        delay_days_added=req.delay_days_added,
+        cost_surcharge_pct=req.cost_surcharge_pct,
+        capacity_reduction_pct=req.capacity_reduction_pct,
+        description=req.description
     )
 
-    final_state = run_control_tower_pipeline(disruption=event, max_rounds=2)
-    sol = final_state.get("joint_solution")
+    # Run resilience workflow against a representative lane
+    workflow_result = run_resilience_workflow(
+        order_id="ORD-DISRUPT-TEST",
+        sku_id=req.test_order_sku,
+        quantity=req.test_order_qty,
+        source_supplier="SUP_PUNE",
+        target_retailer="RET_MUMBAI",
+        disruption=disruption.to_dict()
+    )
 
     return {
-        "disruption": event.model_dump(),
-        "solution": sol.model_dump() if sol else None,
-        "cost_delta": final_state.get("cost_delta", 0.0),
-        "service_delta": final_state.get("service_delta", 0.0),
-        "negotiation_log": final_state.get("negotiation_log", []),
-        "plain_english_briefing": final_state.get("plain_english_briefing", "")
+        "injected_disruption": disruption.model_dump(),
+        "workflow_resolution": workflow_result
     }
 
 
-@app.get("/scenario/{scenario_id}")
-def get_scenario_endpoint(scenario_id: int):
-    """Retrieve details for a specific benchmark scenario ID (1 to 200)."""
-    scenarios = generate_200_scenarios()
-    if scenario_id < 1 or scenario_id > len(scenarios):
-        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found. Valid IDs: 1 to 200.")
+@app.get("/plan/{scenario_id}")
+def get_scenario_plan(scenario_id: int = Path(..., ge=1, le=100)):
+    """Retrieve the recovery plan and audited performance for a specific benchmark scenario."""
+    results_path = os.path.join(os.path.dirname(__file__), "..", "results", "results.json")
+    if not os.path.exists(results_path):
+        results_path = os.path.join(os.path.dirname(__file__), "results", "results.json")
 
-    scn = scenarios[scenario_id - 1]
+    if not os.path.exists(results_path):
+        raise HTTPException(status_code=404, detail="Benchmark results not found. Please run eval/benchmark_100.py first.")
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    scenarios = data.get("scenarios", [])
+    matched = next((s for s in scenarios if s.get("scenario_id") == scenario_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail=f"Scenario ID {scenario_id} not found in benchmark.")
+
     return {
-        "scenario_id": scn["scenario_id"],
-        "seed": scn["seed"],
-        "disruption": scn["disruption"].model_dump() if scn["disruption"] else None,
-        "demand_count": len(scn["demand"])
+        "scenario_metadata": matched,
+        "benchmark_summary": data.get("resilience_performance")
     }
-
-
-@app.get("/benchmark/summary")
-def get_benchmark_summary_endpoint():
-    """Retrieve raw benchmark summary results from results/results.json."""
-    res_path = os.path.join(os.path.dirname(__file__), "..", "results", "results.json")
-    if not os.path.exists(res_path):
-        raise HTTPException(status_code=404, detail="Benchmark results.json not found. Run benchmark first.")
-
-    with open(res_path, "r", encoding="utf-8") as f:
-        return json.load(f)

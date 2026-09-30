@@ -1,109 +1,139 @@
-"""LangGraph StateGraph workflow orchestrating multi-agent supply chain negotiation."""
+"""LangGraph 5-Agent Resilience Workflow Orchestrator.
+
+Constructs the multi-agent graph with:
+- Monitor Agent -> Risk Assessor (Gemini 2.5 Flash) -> Routing Agent (Solver Core)
+  -> Validator Agent (Groq Low Latency) -> [Self-Correction Loop back to Routing if rejected]
+  -> Explainer Agent (Gemini 2.5 Flash).
+"""
 
 from typing import Dict, Any, Optional
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, END
 
-from core.network import MultiEchelonNetwork, get_default_network
-from agents.state import MultiEchelonAgentState, DisruptionEvent
-from agents.demand_agent import demand_agent_node
-from agents.procurement_agent import procurement_agent_node
-from agents.logistics_agent import logistics_agent_node
-from agents.resolver_agent import resolver_agent_node
+from agents.state import DisruptionWorkflowState
+from agents.monitor import monitor_agent_node
+from agents.risk_agent import risk_agent_node
+from agents.routing_agent import routing_agent_node
+from agents.validator_agent import validator_agent_node
 from agents.explainer_agent import explainer_agent_node
+from optimizer.resilience_solver import find_optimal_alternate_route
 
 
-def should_continue_negotiation(state: MultiEchelonAgentState) -> str:
-    """Evaluate whether negotiation rounds should continue or proceed to briefing."""
-    cur_round = state.get("negotiation_round", 1)
-    max_rounds = state.get("max_negotiation_rounds", 2)
-
-    # If within negotiation round limit and another round needed
-    if cur_round < max_rounds:
-        return "explainer_agent"  # Convergence achieved in 1-2 mediated optimization rounds
-    return "explainer_agent"
+def route_after_monitor(state: DisruptionWorkflowState) -> str:
+    """Conditional branch after Monitor Agent."""
+    if state.get("disruption_detected"):
+        return "risk_assessor"
+    return "explainer"
 
 
-def build_control_tower_graph():
-    """Build and compile the multi-agent cooperative StateGraph."""
-    graph = StateGraph(MultiEchelonAgentState)
+def route_after_routing(state: DisruptionWorkflowState) -> str:
+    """Conditional branch after Routing Agent."""
+    if state.get("status") == "FAILED" or not state.get("proposed_plan"):
+        return "explainer"
+    return "validator"
 
-    graph.add_node("demand_agent", demand_agent_node)
-    graph.add_node("procurement_agent", procurement_agent_node)
-    graph.add_node("logistics_agent", logistics_agent_node)
-    graph.add_node("resolver_agent", resolver_agent_node)
-    graph.add_node("explainer_agent", explainer_agent_node)
 
-    # Linear and conditional workflow
-    graph.add_edge(START, "demand_agent")
-    graph.add_edge("demand_agent", "procurement_agent")
-    graph.add_edge("procurement_agent", "logistics_agent")
-    graph.add_edge("logistics_agent", "resolver_agent")
+def route_after_validator(state: DisruptionWorkflowState) -> str:
+    """Conditional branch after Validator Agent with self-correcting retry loop."""
+    status = state.get("status")
+    if status == "RETRYING":
+        return "routing_agent"
+    return "explainer"
 
-    graph.add_conditional_edges(
-        "resolver_agent",
-        should_continue_negotiation,
+
+def build_resilience_graph():
+    """Build and compile the 5-Agent LangGraph StateGraph."""
+    workflow = StateGraph(DisruptionWorkflowState)
+
+    # 1. Add agent nodes
+    workflow.add_node("monitor", monitor_agent_node)
+    workflow.add_node("risk_assessor", risk_agent_node)
+    workflow.add_node("routing_agent", routing_agent_node)
+    workflow.add_node("validator", validator_agent_node)
+    workflow.add_node("explainer", explainer_agent_node)
+
+    # 2. Add entry point
+    workflow.set_entry_point("monitor")
+
+    # 3. Add conditional & direct transitions
+    workflow.add_conditional_edges(
+        "monitor",
+        route_after_monitor,
         {
-            "explainer_agent": "explainer_agent",
-            "procurement_agent": "procurement_agent"
+            "risk_assessor": "risk_assessor",
+            "explainer": "explainer"
         }
     )
 
-    graph.add_edge("explainer_agent", END)
+    workflow.add_edge("risk_assessor", "routing_agent")
 
-    return graph.compile()
-
-
-control_tower_workflow = build_control_tower_graph()
-
-
-def run_control_tower_pipeline(
-    network: Optional[MultiEchelonNetwork] = None,
-    disruption: Optional[DisruptionEvent] = None,
-    max_rounds: int = 2
-) -> Dict[str, Any]:
-    """Execute the full multi-agent cooperative control tower pipeline."""
-    net = network or get_default_network()
-
-    # If disruption is present, first compute the steady-state baseline solution for delta comparison
-    before_sol = None
-    if disruption:
-        baseline_state: MultiEchelonAgentState = {
-            "network": net,
-            "forecast_demand": {},
-            "active_disruption": None,
-            "procurement_proposal": {},
-            "logistics_proposal": {},
-            "conflict_detected": False,
-            "conflict_reason": "",
-            "negotiation_round": 1,
-            "max_negotiation_rounds": 1,
-            "negotiation_log": [],
-            "joint_solution": None,
-            "before_disruption_solution": None,
-            "cost_delta": 0.0,
-            "service_delta": 0.0,
-            "plain_english_briefing": ""
+    workflow.add_conditional_edges(
+        "routing_agent",
+        route_after_routing,
+        {
+            "validator": "validator",
+            "explainer": "explainer"
         }
-        res_baseline = control_tower_workflow.invoke(baseline_state)
-        before_sol = res_baseline.get("joint_solution")
+    )
 
-    initial_state: MultiEchelonAgentState = {
-        "network": net,
-        "forecast_demand": {},
-        "active_disruption": disruption,
-        "procurement_proposal": {},
-        "logistics_proposal": {},
-        "conflict_detected": False,
-        "conflict_reason": "",
-        "negotiation_round": 1,
-        "max_negotiation_rounds": max_rounds,
-        "negotiation_log": [],
-        "joint_solution": None,
-        "before_disruption_solution": before_sol,
-        "cost_delta": 0.0,
-        "service_delta": 0.0,
-        "plain_english_briefing": ""
+    workflow.add_conditional_edges(
+        "validator",
+        route_after_validator,
+        {
+            "routing_agent": "routing_agent",  # Self-correction loop!
+            "explainer": "explainer"
+        }
+    )
+
+    workflow.add_edge("explainer", END)
+
+    return workflow.compile()
+
+
+resilience_graph = build_resilience_graph()
+
+
+def run_resilience_workflow(
+    order_id: str,
+    sku_id: str,
+    quantity: int,
+    source_supplier: str,
+    target_retailer: str,
+    disruption: Optional[Dict[str, Any]] = None,
+    nominal_plan: Optional[Dict[str, Any]] = None,
+    max_retries: int = 3
+) -> DisruptionWorkflowState:
+    """Execute the full 5-agent LangGraph workflow for an order under disruption."""
+    # Compute baseline nominal plan if not supplied
+    if not nominal_plan:
+        initial_solution, _ = find_optimal_alternate_route(
+            supplier_id=source_supplier,
+            retailer_id=target_retailer,
+            sku_id=sku_id,
+            quantity=quantity
+        )
+        if initial_solution:
+            nominal_plan = initial_solution.to_dict()
+
+    initial_state: DisruptionWorkflowState = {
+        "order_id": order_id,
+        "sku_id": sku_id,
+        "quantity": quantity,
+        "source_supplier": source_supplier,
+        "target_retailer": target_retailer,
+        "nominal_plan": nominal_plan,
+        "disruption": disruption,
+        "disruption_detected": False,
+        "risk_assessment": None,
+        "proposed_plan": None,
+        "validation_result": None,
+        "retry_count": 0,
+        "max_retries": max_retries,
+        "explanation": None,
+        "final_plan": nominal_plan,
+        "status": "INITIALIZED",
+        "agent_logs": [],
+        "model_records": []
     }
 
-    final_state = control_tower_workflow.invoke(initial_state)
+    final_state = resilience_graph.invoke(initial_state)
     return final_state

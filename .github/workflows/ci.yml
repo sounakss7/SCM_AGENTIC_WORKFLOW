@@ -1,4 +1,4 @@
-name: SCM Disruption Response Engine CI
+name: Indian Supply Chain Resilience Engine CI
 
 on:
   push:
@@ -37,6 +37,6 @@ jobs:
       run: |
         python -m pytest tests/ -v
 
-    - name: Verify benchmark execution
+    - name: Verify 100-scenario benchmark reproducibility
       run: |
-        python -c "from eval.run_benchmark import run_multi_echelon_benchmark; run_multi_echelon_benchmark(scenario_count=5, seed=42)"
+        python eval/benchmark_100.py

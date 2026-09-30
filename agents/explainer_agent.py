@@ -1,66 +1,110 @@
-"""Explainer Agent: Translates deterministic optimizer results into plain-English operational briefs.
+"""Explainer Agent (Agent 5 in Resilience Workflow).
 
-Strict Rule: The LLM must NOT alter any numbers or hallucinate mathematical figures.
-All numbers must strictly match the deterministic MILP solution.
+Uses Google Gemini 2.5 Flash to synthesize an executive supply chain briefing in INR (₹).
+Strict Guarantee: Does NOT compute or mutate numbers. Strictly presents the deterministic
+solver's audited costs and transit milestones.
 """
 
-from typing import Dict
-from agents.state import MultiEchelonAgentState
+from typing import Dict, Any
+from agents.state import DisruptionWorkflowState
+from agents.llm_client import llm_router
+from core.network import CARRIERS_DB, WAREHOUSES_DB, SKUS_DB
 
 
-def generate_plain_english_briefing(state: MultiEchelonAgentState) -> str:
-    """Generate executive and operational summary strictly grounded in solver facts."""
-    sol = state.get("joint_solution")
-    disruption = state.get("active_disruption")
-    rounds = len(state.get("negotiation_log", []))
+def explainer_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowState:
+    """Generate executive summary using Gemini 2.5 Flash explaining the resilience decision in ₹."""
+    logs = state.get("agent_logs", [])
+    model_records = state.get("model_records", [])
 
-    if not sol or not sol.is_feasible:
-        return "Operational Warning: Optimization model was infeasible. Emergency manual escalation required."
+    if not state.get("disruption_detected"):
+        state["explanation"] = "Shipment proceeding on nominal schedule. No disruption detected."
+        return state
 
-    disruption_text = "None (Steady-state operations)"
-    if disruption:
-        disruption_text = f"**{disruption.disruption_type}** affecting `{disruption.affected_entity}` (Severity: {disruption.severity_factor}x)"
+    final_plan = state.get("final_plan")
+    nominal_plan = state.get("nominal_plan", {})
+    disruption = state.get("disruption", {})
+    risk = state.get("risk_assessment", {})
+    sku_id = state.get("sku_id", "SKU_01")
+    sku_item = SKUS_DB.get(sku_id)
+    sku_name = getattr(sku_item, "name", "Product") if sku_item else "Product"
+    quantity = state.get("quantity", 100)
 
-    # Identify top suppliers and warehouses used
-    s1_vol = sum(v for k, v in sol.supplier_orders.items() if k.startswith("S1"))
-    s2_vol = sum(v for k, v in sol.supplier_orders.items() if k.startswith("S2"))
-    s3_vol = sum(v for k, v in sol.supplier_orders.items() if k.startswith("S3"))
+    if not final_plan or state.get("status") == "FAILED":
+        explanation = (
+            f"ALERT: Severe network disruption ({disruption.get('description')}). "
+            f"All alternate route combinations breached SLA limits or carrier capacity. "
+            f"Immediate human operator intervention required."
+        )
+        state["explanation"] = explanation
+        logs.append({
+            "agent": "Explainer Agent",
+            "action": "Alert Summary Generated",
+            "message": "Generated critical exception report for logistics director.",
+            "status": "ALERT"
+        })
+        return state
 
-    briefing = (
-        f"### 🌐 Multi-Echelon Supply Chain Control Tower Briefing\n\n"
-        f"**Executive Status**: Optimal multi-echelon replenishment plan generated after **{rounds} negotiation round(s)**.\n\n"
-        f"#### 1. Key Performance Indicators\n"
-        f"- **Total Landed Cost**: **${sol.total_cost:,.2f}**\n"
-        f"  - Procurement Spend: ${sol.procurement_cost:,.2f}\n"
-        f"  - Transport & Freight Spend: ${sol.transport_cost:,.2f}\n"
-        f"  - Inventory Holding Cost: ${sol.holding_cost:,.2f}\n"
-        f"  - Stockout Penalty Cost: ${sol.stockout_cost:,.2f}\n"
-        f"- **Service Level**: **{sol.service_level_pct:.1f}%** ({sol.total_fulfilled_units:,.0f} / {sol.total_demand_units:,.0f} units fulfilled)\n"
-        f"- **Stockout Rate**: **{sol.stockout_rate_pct:.1f}%** ({sol.total_stockout_units:,.0f} units unmet)\n\n"
-        f"#### 2. Sourcing & Fulfillment Allocations\n"
-        f"- **Global Bulk Supplier (S1)**: {s1_vol:,.0f} units ordered (Cost-efficient baseline)\n"
-        f"- **Regional Supplier (S2)**: {s2_vol:,.0f} units ordered (Lead-time buffer)\n"
-        f"- **Express Supplier (S3)**: {s3_vol:,.0f} units ordered (Emergency same-period fulfillment)\n\n"
-        f"#### 3. Active Disruption & Mitigation Response\n"
-        f"- **Active Incident**: {disruption_text}\n"
+    # Audited numbers (must be preserved verbatim)
+    nominal_cost = nominal_plan.get("total_cost_inr", 0.0)
+    final_cost = final_plan.get("total_cost_inr", 0.0)
+    cost_delta = round(final_cost - nominal_cost, 2)
+    nominal_transit = nominal_plan.get("total_transit_days", 0.0)
+    final_transit = final_plan.get("total_transit_days", 0.0)
+    transit_delta = round(final_transit - nominal_transit, 2)
+    unattended_penalty = risk.get("unattended_penalty_inr", 0.0)
+    unattended_delay = risk.get("unattended_delay_days", 0.0)
+    carrier_item = CARRIERS_DB.get(final_plan.get("carrier"))
+    carrier_name = getattr(carrier_item, "name", final_plan.get("carrier")) if carrier_item else final_plan.get("carrier")
+
+    prompt = f"""
+You are the Lead Logistics Explainer Agent for an Indian Supply Chain Control Tower.
+Synthesize an executive disruption summary using the following audited numbers.
+IMPORTANT: You MUST NOT change, recalculate, or alter any numbers. Present them verbatim.
+
+Disruption Event:
+- Description: {disruption.get('description')}
+- Unattended Delay Risk: {unattended_delay} days
+- Averted SLA Penalty Exposure: ₹{unattended_penalty:,.2f}
+
+Mitigation Decision:
+- Order: {quantity} units of {sku_name}
+- Re-routed Path: {final_plan.get('supplier')} -> {final_plan.get('port', 'DIRECT')} -> {final_plan.get('warehouse')} -> {final_plan.get('retailer')}
+- Carrier Switched To: {carrier_name} ({final_plan.get('carrier')})
+- Baseline Landed Cost: ₹{nominal_cost:,.2f}
+- Re-routed Landed Cost: ₹{final_cost:,.2f} (Delta: ₹{cost_delta:+,.2f})
+- Re-routed Transit Time: {final_transit} days (Transit Delta: {transit_delta:+} days)
+
+Write a 3-point bulleted briefing for the Chief Supply Chain Officer:
+1. Incident & Exposure
+2. Self-Correction Action
+3. Financial & SLA Impact
+"""
+
+    mock_fallback = (
+        f"**Executive Disruption Briefing**:\n"
+        f"1. **Incident & Exposure**: {disruption.get('description')} threatened a {unattended_delay}-day delivery stoppage, exposing ₹{unattended_penalty:,.2f} in SLA late fees.\n"
+        f"2. **Self-Correction Action**: Re-routed {quantity} units of {sku_name} via {carrier_name} through {final_plan.get('warehouse')}.\n"
+        f"3. **Financial & SLA Impact**: Alternate landed cost settled at ₹{final_cost:,.2f} (Delta: ₹{cost_delta:+,.2f}) with arrival in {final_transit} days, saving ₹{unattended_penalty:,.2f} in stockout penalties."
     )
 
-    if disruption:
-        cost_delta = state.get("cost_delta", 0.0)
-        svc_delta = state.get("service_delta", 0.0)
-        briefing += (
-            f"- **Financial Impact**: Net cost change of **{'+' if cost_delta >= 0 else ''}${cost_delta:,.2f}** "
-            f"and service level change of **{svc_delta:+.1f}%** compared to pre-disruption baseline.\n"
-            f"- **Agent Mediation Action**: Procurement and Logistics synchronized sourcing to reroute "
-            f"inventory around the bottleneck while strictly respecting warehouse storage capacities.\n"
-        )
-    else:
-        briefing += "- **Steady-State Stability**: All network flow balances, lead times, and capacity caps satisfied.\n"
+    response_text, record = llm_router.call_gemini_reasoning(
+        agent_name="Explainer Agent",
+        prompt=prompt,
+        mock_fallback=mock_fallback
+    )
 
-    return briefing
+    logs.append({
+        "agent": "Explainer Agent",
+        "action": "Briefing Synthesized (Gemini 2.5 Flash)",
+        "message": f"Generated executive briefing preserving audited ₹{final_cost:,.2f} landed cost and ₹{cost_delta:+,.2f} delta.",
+        "status": "SUCCESS"
+    })
+    model_records.append(record.model_dump())
 
-
-def explainer_agent_node(state: MultiEchelonAgentState) -> Dict:
-    """LangGraph node: Formulate plain-English executive briefing."""
-    briefing = generate_plain_english_briefing(state)
-    return {"plain_english_briefing": briefing}
+    return {
+        "explanation": response_text,
+        "status": "COMPLETED",
+        "final_plan": final_plan,
+        "agent_logs": logs,
+        "model_records": model_records
+    }

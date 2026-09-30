@@ -1,5 +1,6 @@
-"""Unit tests for FastAPI endpoints."""
+"""Unit and Integration Tests for FastAPI Application Endpoints."""
 
+import pytest
 from fastapi.testclient import TestClient
 from api.server import app
 
@@ -11,7 +12,8 @@ def test_api_health_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "healthy"
-    assert "Control Tower" in data["app_name"]
+    assert "Resilience" in data["service"]
+    assert "INR" in data["currency"]
 
 
 def test_api_network_endpoint():
@@ -19,49 +21,59 @@ def test_api_network_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert len(data["suppliers"]) == 3
-    assert len(data["warehouses"]) == 2
-    assert len(data["stores"]) == 6
+    assert len(data["ports"]) == 3
+    assert len(data["warehouses"]) == 3
+    assert len(data["retailers"]) == 4
+    assert len(data["carriers"]) == 4
+    assert len(data["skus"]) == 25
 
 
-def test_api_forecast_endpoint():
-    res = client.post("/forecast", json={"horizon_length": 4})
+def test_api_catalog_disruptions():
+    res = client.get("/catalog/disruptions")
     assert res.status_code == 200
     data = res.json()
-    assert "forecasts" in data
-    assert len(data["forecasts"]) > 0
+    assert len(data) >= 3
+    assert any(d["target_id"] == "SAFEXPRESS" for d in data)
 
 
-def test_api_plan_endpoint():
-    res = client.post("/plan", json={"max_negotiation_rounds": 1})
-    assert res.status_code == 200
-    data = res.json()
-    assert "solution" in data
-    assert data["solution"]["is_feasible"] is True
-    assert "plain_english_briefing" in data
-
-
-def test_api_disrupt_endpoint():
-    res = client.post("/disrupt", json={
-        "disruption_type": "SUPPLIER_DELAY",
-        "affected_entity": "S1",
-        "severity_factor": 2.0,
-        "duration_periods": 2
+def test_api_simulate_steady_state():
+    res = client.post("/simulate", json={
+        "order_id": "ORD-TEST-001",
+        "sku_id": "SKU_01",
+        "quantity": 50,
+        "source_supplier": "SUP_PUNE",
+        "target_retailer": "RET_MUMBAI"
     })
     assert res.status_code == 200
     data = res.json()
-    assert "disruption" in data
-    assert "solution" in data
+    assert data["disruption_detected"] is False
+    assert data["status"] == "NOMINAL"
+    assert data["final_plan"] is not None
 
 
-def test_api_scenario_endpoint():
-    res = client.get("/scenario/1")
+def test_api_disrupt_injection():
+    res = client.post("/disrupt", json={
+        "disruption_type": "CARRIER_FAILURE",
+        "target_type": "CARRIER",
+        "target_id": "SAFEXPRESS",
+        "severity": "CRITICAL",
+        "delay_days_added": 5.0,
+        "cost_surcharge_pct": 50.0,
+        "capacity_reduction_pct": 100.0,
+        "description": "Safexpress strike via API test."
+    })
     assert res.status_code == 200
     data = res.json()
-    assert data["scenario_id"] == 1
+    assert "injected_disruption" in data
+    assert "workflow_resolution" in data
+    resolution = data["workflow_resolution"]
+    assert resolution["disruption_detected"] is True
+    assert resolution["final_plan"]["carrier"] != "SAFEXPRESS"
 
 
-def test_api_benchmark_summary_endpoint():
-    res = client.get("/benchmark/summary")
+def test_api_plan_scenario():
+    res = client.get("/plan/1")
     assert res.status_code == 200
     data = res.json()
-    assert "summary" in data
+    assert "scenario_metadata" in data
+    assert data["scenario_metadata"]["scenario_id"] == 1
