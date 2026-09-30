@@ -39,4 +39,4 @@ jobs:
 
     - name: Verify benchmark execution
       run: |
-        python -c "from eval.run_benchmark import run_evaluation_benchmark; run_evaluation_benchmark(num_scenarios=5, seed=42)"
+        python -c "from eval.run_benchmark import run_multi_echelon_benchmark; run_multi_echelon_benchmark(scenario_count=5, seed=42)"

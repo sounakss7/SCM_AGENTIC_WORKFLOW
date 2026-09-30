@@ -1,0 +1,18 @@
+{
+  "test_window_periods": [
+    19,
+    24
+  ],
+  "sample_size": 108,
+  "ML_Model": {
+    "algorithm": "LightGBM",
+    "MAPE_pct": 16.61,
+    "WAPE_pct": 16.1
+  },
+  "Naive_Seasonal_Baseline": {
+    "algorithm": "Lag-1 Seasonal Persistence",
+    "MAPE_pct": 17.97,
+    "WAPE_pct": 17.36
+  },
+  "wape_improvement_pct": 1.26
+}

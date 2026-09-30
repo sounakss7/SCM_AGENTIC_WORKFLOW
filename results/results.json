@@ -1,51 +1,42 @@
 {
   "scenario_count": 200,
-  "batch_size": 15,
   "seed": 42,
   "summary": {
-    "Blind Dispatch": {
-      "total_cost_inr": 267274.95,
-      "total_shipping_spend_inr": 204335.0,
-      "total_rto_loss_inr": 62939.95,
-      "cost_reduction_vs_blind_pct": -0.0,
-      "parcels_dispatched": 3000,
-      "parcels_cancelled": 0,
-      "upi_converted": 0,
-      "feasibility_rate_pct": 100.0,
-      "mean_latency_sec": 0.0
+    "Static Reorder-Point (s,S)": {
+      "mean_total_cost_usd": 85545.57,
+      "mean_service_level_pct": 78.67,
+      "mean_stockout_rate_pct": 21.33,
+      "plan_feasibility_rate_pct": 100.0,
+      "mean_negotiation_rounds": 0.0,
+      "mean_latency_sec": 0.0001,
+      "mean_llm_calls_per_scenario": 0.0
     },
-    "Rule-based Greedy": {
-      "total_cost_inr": 306457.0,
-      "total_shipping_spend_inr": 173362.0,
-      "total_rto_loss_inr": 133095.0,
-      "cost_reduction_vs_blind_pct": -14.7,
-      "parcels_dispatched": 2999,
-      "parcels_cancelled": 1,
-      "upi_converted": 0,
-      "feasibility_rate_pct": 0.0,
-      "mean_latency_sec": 0.0
+    "Greedy Single-Echelon": {
+      "mean_total_cost_usd": 106065.97,
+      "mean_service_level_pct": 61.98,
+      "mean_stockout_rate_pct": 38.02,
+      "plan_feasibility_rate_pct": 0.0,
+      "mean_negotiation_rounds": 0.0,
+      "mean_latency_sec": 0.0,
+      "mean_llm_calls_per_scenario": 0.0
     },
-    "LLM-Only Planner": {
-      "total_cost_inr": 355864.4,
-      "total_shipping_spend_inr": 251129.0,
-      "total_rto_loss_inr": 104735.4,
-      "cost_reduction_vs_blind_pct": -33.1,
-      "parcels_dispatched": 3000,
-      "parcels_cancelled": 0,
-      "upi_converted": 0,
-      "feasibility_rate_pct": 1.0,
-      "mean_latency_sec": 0.0154
+    "LLM-Only (No Optimizer)": {
+      "mean_total_cost_usd": 104977.26,
+      "mean_service_level_pct": 75.8,
+      "mean_stockout_rate_pct": 24.2,
+      "plan_feasibility_rate_pct": 63.5,
+      "mean_negotiation_rounds": 1.0,
+      "mean_latency_sec": 0.0184,
+      "mean_llm_calls_per_scenario": 3.0
     },
     "Agents + MILP Solver (Ours)": {
-      "total_cost_inr": 270547.06,
-      "total_shipping_spend_inr": 230896.0,
-      "total_rto_loss_inr": 39651.07,
-      "cost_reduction_vs_blind_pct": -1.2,
-      "parcels_dispatched": 2926,
-      "parcels_cancelled": 74,
-      "upi_converted": 104,
-      "feasibility_rate_pct": 100.0,
-      "mean_latency_sec": 0.0427
+      "mean_total_cost_usd": 86499.6,
+      "mean_service_level_pct": 65.37,
+      "mean_stockout_rate_pct": 34.63,
+      "plan_feasibility_rate_pct": 100.0,
+      "mean_negotiation_rounds": 1.5,
+      "mean_latency_sec": 0.0607,
+      "mean_llm_calls_per_scenario": 1.0
     }
   }
 }

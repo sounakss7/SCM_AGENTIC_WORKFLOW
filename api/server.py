@@ -1,144 +1,146 @@
-"""FastAPI Backend Server for Indian E-Commerce COD RTO & Last-Mile Allocation Engine."""
+"""FastAPI Application Server for Multi-Echelon Supply Chain Control Tower."""
 
-from typing import List, Dict, Any, Optional
+import os
+import json
+from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from core.schema import OrderRecord, DispatchPlan, AuditLogEntry, IndianAddress
-from core.config import settings, get_default_carrier_rate_cards
-from core.database import db
-from core.data_loader import generate_indian_orders
-from agents.address_parser import parse_indian_address
-from agents.whatsapp_agent import simulate_whatsapp_dialogue
-from agents.workflow import run_indian_logistics_pipeline
+from core.network import MultiEchelonNetwork, get_default_network
+from forecasting.forecaster import forecaster
+from agents.state import DisruptionEvent
+from agents.workflow import run_control_tower_pipeline
+from eval.benchmark_scenarios import generate_200_scenarios
 
 app = FastAPI(
-    title="Bharat E-Commerce COD RTO & Last-Mile Allocation Engine",
-    description="Autonomous Agentic Workflow + PuLP Deterministic MILP Optimizer for Indian Logistics (Meesho / Shiprocket style)",
-    version="2.0.0"
+    title="Multi-Echelon Supply Chain Control Tower",
+    description="Autonomous cooperating LangGraph agents with a deterministic MILP optimization core for multi-echelon replenishment and disruption management.",
+    version="3.0.0"
 )
 
 
-class IngestOrdersRequest(BaseModel):
-    count: int = 20
-    seed: int = 42
+class ForecastRequest(BaseModel):
+    horizon_length: int = Field(default=4, ge=1, le=12)
 
 
-class ParseAddressRequest(BaseModel):
-    raw_address: str
-    pincode: Optional[str] = "110001"
+class PlanRequest(BaseModel):
+    max_negotiation_rounds: int = Field(default=2, ge=1, le=5)
 
 
-class ApprovalRequest(BaseModel):
-    plan_id: str
-    approved: bool
-    operator_name: str
-    notes: Optional[str] = None
+class DisruptRequest(BaseModel):
+    disruption_type: str = Field(..., description="SUPPLIER_DELAY, PORT_CONGESTION, DEMAND_SPIKE, or WAREHOUSE_CAPACITY_LOSS")
+    affected_entity: str = Field(..., description="e.g., 'S1', 'W1', or 'R1'")
+    severity_factor: float = Field(default=2.0, ge=0.1)
+    duration_periods: int = Field(default=2, ge=1)
+    description: Optional[str] = "Operational disruption injected via Control Tower API."
 
 
 @app.get("/health")
-def health_check():
-    """Health check endpoint."""
+def health_endpoint():
+    """System liveness and configuration health check."""
     return {
         "status": "healthy",
-        "app_name": settings.APP_NAME,
-        "environment": settings.ENV,
-        "hitl_threshold_inr": settings.HITL_ORDER_VALUE_THRESHOLD_INR,
-        "database": settings.DATABASE_URL
+        "app_name": "Multi-Echelon Supply Chain Control Tower",
+        "version": "3.0.0",
+        "optimizer": "PuLP / CBC Branch-and-Bound",
+        "ml_forecaster": "LightGBM / Gradient Boosting"
     }
 
 
-@app.get("/carriers/rate-cards")
-def get_rate_cards():
-    """Inspect active 3PL courier rate cards and daily hub capacities."""
-    cards = get_default_carrier_rate_cards()
-    return {c.value: card.model_dump() for c, card in cards.items()}
+@app.get("/network")
+def network_topology_endpoint():
+    """Return the physical multi-echelon network topology (suppliers, warehouses, stores, SKUs)."""
+    net = get_default_network()
+    return net.model_dump()
 
 
-@app.post("/address/parse")
-def parse_address_endpoint(req: ParseAddressRequest):
-    """Parse a chaotic Indian address and return structured entities and completeness score."""
-    addr_obj, score = parse_indian_address(req.raw_address, req.pincode or "110001")
-    return {
-        "address": addr_obj.model_dump(),
-        "completeness_score": score,
-        "quality_tier": addr_obj.quality_tier.value,
-        "has_landmark": addr_obj.has_landmark
-    }
-
-
-@app.post("/orders/sample")
-def sample_orders_endpoint(req: IngestOrdersRequest):
-    """Generate a batch of realistic Indian e-commerce orders."""
-    orders = generate_indian_orders(count=req.count, seed=req.seed)
-    return {
-        "count": len(orders),
-        "orders": [o.model_dump() for o in orders]
-    }
-
-
-@app.post("/dispatch/allocate")
-def allocate_dispatch_endpoint(orders: List[OrderRecord], hitl_approved: bool = False):
-    """Execute the full LangGraph + PuLP MILP allocation pipeline on an order batch."""
-    if not orders:
-        raise HTTPException(status_code=400, detail="Order list cannot be empty.")
-
-    final_state = run_indian_logistics_pipeline(orders, hitl_approved=hitl_approved)
-    plan: Optional[DispatchPlan] = final_state.get("dispatch_plan")
-
-    if not plan:
-        raise HTTPException(status_code=500, detail="Failed to generate dispatch plan.")
-
-    # Record audit log
-    db.log_event(AuditLogEntry(
-        log_id=f"LOG-{plan.plan_id}",
-        timestamp="",
-        event_type="DISPATCH_PLAN_GENERATED",
-        details={
-            "dispatched": plan.parcels_dispatched,
-            "cancelled": plan.parcels_cancelled_prevented_rto,
-            "upi_converted": plan.upi_converted_count,
-            "rto_savings_inr": plan.rto_cost_savings_inr,
-            "hitl_required": plan.hitl_approval_required
-        },
-        financial_impact_inr=plan.rto_cost_savings_inr,
-        operator_approved=not plan.hitl_approval_required
-    ))
+@app.post("/forecast")
+def forecast_endpoint(req: ForecastRequest = ForecastRequest()):
+    """Generate multi-period demand forecasts with uncertainty bounds and backtest accuracy."""
+    forecasts = forecaster.predict_horizon(horizon_length=req.horizon_length)
+    formatted = [
+        {
+            "store_id": k[0],
+            "sku_id": k[1],
+            "period": k[2],
+            "point_forecast": v["point_forecast"],
+            "lower_bound_80": v["lower_bound_80"],
+            "upper_bound_80": v["upper_bound_80"],
+            "std_dev": v["std_dev"]
+        }
+        for k, v in forecasts.items()
+    ]
 
     return {
-        "plan": plan.model_dump(),
-        "cancelled_orders": final_state.get("cancelled_orders", []),
-        "upi_converted_orders": final_state.get("upi_converted_orders", []),
-        "hitl_required": final_state.get("hitl_required", False),
-        "hitl_flagged_orders": final_state.get("hitl_flagged_orders", []),
-        "briefing_en": final_state.get("briefing_en", ""),
-        "briefing_hi": final_state.get("briefing_hi", "")
+        "horizon_periods": req.horizon_length,
+        "backtest_metrics": forecaster.metrics_report,
+        "forecasts": formatted
     }
 
 
-@app.post("/dispatch/approve")
-def approve_dispatch_endpoint(req: ApprovalRequest):
-    """Supervisor sign-off for orders requiring Human-in-the-Loop authorization."""
-    db.log_event(AuditLogEntry(
-        log_id=f"APP-{req.plan_id}",
-        timestamp="",
-        event_type="HITL_SUPERVISOR_APPROVAL",
-        details={"plan_id": req.plan_id, "approved": req.approved},
-        financial_impact_inr=0.0,
-        operator_approved=req.approved,
-        operator_notes=f"Authorized by {req.operator_name}. Notes: {req.notes or 'None'}"
-    ))
+@app.post("/plan")
+def plan_endpoint(req: PlanRequest = PlanRequest()):
+    """Execute multi-agent negotiation and deterministic MILP replenishment optimization."""
+    final_state = run_control_tower_pipeline(max_rounds=req.max_negotiation_rounds)
+    sol = final_state.get("joint_solution")
+
+    if not sol:
+        raise HTTPException(status_code=500, detail="Failed to generate optimal multi-echelon plan.")
 
     return {
-        "status": "APPROVED" if req.approved else "REJECTED",
-        "plan_id": req.plan_id,
-        "operator": req.operator_name,
-        "message": "Authorization recorded in immutable ledger."
+        "solution": sol.model_dump(),
+        "negotiation_rounds_executed": len(final_state.get("negotiation_log", [])),
+        "negotiation_log": final_state.get("negotiation_log", []),
+        "plain_english_briefing": final_state.get("plain_english_briefing", "")
     }
 
 
-@app.get("/audit/logs")
-def get_audit_logs(limit: int = 50):
-    """Retrieve immutable audit ledger entries."""
-    logs = db.get_recent_audit_logs(limit)
-    return {"count": len(logs), "logs": logs}
+@app.post("/disrupt")
+def disrupt_endpoint(req: DisruptRequest):
+    """Inject a disruption, trigger multi-agent re-negotiation, and return cost delta."""
+    event = DisruptionEvent(
+        disruption_type=req.disruption_type,
+        affected_entity=req.affected_entity,
+        severity_factor=req.severity_factor,
+        duration_periods=req.duration_periods,
+        description=req.description or "Injected disruption"
+    )
+
+    final_state = run_control_tower_pipeline(disruption=event, max_rounds=2)
+    sol = final_state.get("joint_solution")
+
+    return {
+        "disruption": event.model_dump(),
+        "solution": sol.model_dump() if sol else None,
+        "cost_delta": final_state.get("cost_delta", 0.0),
+        "service_delta": final_state.get("service_delta", 0.0),
+        "negotiation_log": final_state.get("negotiation_log", []),
+        "plain_english_briefing": final_state.get("plain_english_briefing", "")
+    }
+
+
+@app.get("/scenario/{scenario_id}")
+def get_scenario_endpoint(scenario_id: int):
+    """Retrieve details for a specific benchmark scenario ID (1 to 200)."""
+    scenarios = generate_200_scenarios()
+    if scenario_id < 1 or scenario_id > len(scenarios):
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found. Valid IDs: 1 to 200.")
+
+    scn = scenarios[scenario_id - 1]
+    return {
+        "scenario_id": scn["scenario_id"],
+        "seed": scn["seed"],
+        "disruption": scn["disruption"].model_dump() if scn["disruption"] else None,
+        "demand_count": len(scn["demand"])
+    }
+
+
+@app.get("/benchmark/summary")
+def get_benchmark_summary_endpoint():
+    """Retrieve raw benchmark summary results from results/results.json."""
+    res_path = os.path.join(os.path.dirname(__file__), "..", "results", "results.json")
+    if not os.path.exists(res_path):
+        raise HTTPException(status_code=404, detail="Benchmark results.json not found. Run benchmark first.")
+
+    with open(res_path, "r", encoding="utf-8") as f:
+        return json.load(f)

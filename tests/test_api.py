@@ -11,31 +11,57 @@ def test_api_health_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "healthy"
-    assert "Bharat" in data["app_name"]
+    assert "Control Tower" in data["app_name"]
 
 
-def test_api_parse_address_endpoint():
-    res = client.post("/address/parse", json={
-        "raw_address": "Near Hanuman Mandir, Sector 15, Noida, UP, 201301",
-        "pincode": "201301"
+def test_api_network_endpoint():
+    res = client.get("/network")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["suppliers"]) == 3
+    assert len(data["warehouses"]) == 2
+    assert len(data["stores"]) == 6
+
+
+def test_api_forecast_endpoint():
+    res = client.post("/forecast", json={"horizon_length": 4})
+    assert res.status_code == 200
+    data = res.json()
+    assert "forecasts" in data
+    assert len(data["forecasts"]) > 0
+
+
+def test_api_plan_endpoint():
+    res = client.post("/plan", json={"max_negotiation_rounds": 1})
+    assert res.status_code == 200
+    data = res.json()
+    assert "solution" in data
+    assert data["solution"]["is_feasible"] is True
+    assert "plain_english_briefing" in data
+
+
+def test_api_disrupt_endpoint():
+    res = client.post("/disrupt", json={
+        "disruption_type": "SUPPLIER_DELAY",
+        "affected_entity": "S1",
+        "severity_factor": 2.0,
+        "duration_periods": 2
     })
     assert res.status_code == 200
     data = res.json()
-    assert data["has_landmark"] is True
-    assert data["completeness_score"] >= 0.60
+    assert "disruption" in data
+    assert "solution" in data
 
 
-def test_api_rate_cards_endpoint():
-    res = client.get("/carriers/rate-cards")
+def test_api_scenario_endpoint():
+    res = client.get("/scenario/1")
     assert res.status_code == 200
     data = res.json()
-    assert "DELHIVERY" in data
-    assert "BLUEDART" in data
-    assert "SHADOWFAX" in data
+    assert data["scenario_id"] == 1
 
 
-def test_api_audit_logs_endpoint():
-    res = client.get("/audit/logs")
+def test_api_benchmark_summary_endpoint():
+    res = client.get("/benchmark/summary")
     assert res.status_code == 200
     data = res.json()
-    assert "logs" in data
+    assert "summary" in data

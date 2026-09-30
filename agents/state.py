@@ -1,41 +1,42 @@
-"""LangGraph state representation for Indian E-Commerce COD RTO & Last-Mile Allocation Engine."""
+"""Typed Pydantic and TypedDict state models for Multi-Agent Supply Chain Negotiation."""
 
-from typing import Dict, List, Optional, TypedDict
-from core.schema import OrderRecord, DispatchPlan, WhatsAppVerificationResult
+from typing import Dict, List, Optional, Any, Tuple, TypedDict
+from pydantic import BaseModel, Field
+from core.network import MultiEchelonNetwork
+from optimizer.multi_echelon_solver import MultiEchelonSolution
 
 
-class IndianLogisticsState(TypedDict):
-    """Shared state container across all LangGraph nodes."""
-    # Input batch
-    raw_orders: List[OrderRecord]
+class DisruptionEvent(BaseModel):
+    disruption_type: str = Field(..., description="SUPPLIER_DELAY, PORT_CONGESTION, DEMAND_SPIKE, or WAREHOUSE_CAPACITY_LOSS")
+    affected_entity: str = Field(..., description="e.g. 'S1', 'W1', or 'R1'")
+    severity_factor: float = Field(default=1.5, description="Multiplier or magnitude of disruption")
+    duration_periods: int = Field(default=2, ge=1)
+    description: str = Field(default="")
 
-    # Agent 1: Address Intelligence output
-    address_scores: Dict[str, float]  # order_id -> quality score (0.0 to 1.0)
-    parsed_addresses: Dict[str, Dict[str, str]]
 
-    # Agent 2: RTO Risk Scorer output
-    rto_risk_scores: Dict[str, float]  # order_id -> predicted P(RTO)
-    expected_margins: Dict[str, float]  # order_id -> estimated margin in ₹
+class NegotiationRound(BaseModel):
+    round_index: int
+    procurement_focus: str
+    logistics_focus: str
+    conflict_identified: str
+    resolution_action: str
+    joint_cost_estimate: float
+    service_level_estimate: float
 
-    # Agent 3: WhatsApp Pre-shipment Verification output
-    whatsapp_results: Dict[str, WhatsAppVerificationResult]
-    cancelled_orders: List[str]  # Orders cancelled by buyer before dispatch (saves ₹180 in freight)
-    upi_converted_orders: List[str]  # Orders converted from COD to UPI Prepaid (risk slashed)
-    dispatched_candidates: List[OrderRecord]
 
-    # Agent 4: Deterministic Planner (PuLP MILP) output
-    dispatch_plan: Optional[DispatchPlan]
-
-    # Agent 5: Quota & Serviceability Critic output
-    critic_passed: bool
-    critic_violations: List[str]
-    retry_count: int
-
-    # Human-in-the-Loop Gate
-    hitl_required: bool
-    hitl_flagged_orders: List[str]
-    hitl_approved: bool
-
-    # Agent 6: Bilingual Explainer output
-    briefing_en: str
-    briefing_hi: str
+class MultiEchelonAgentState(TypedDict):
+    network: MultiEchelonNetwork
+    forecast_demand: Dict[Tuple[str, str, int], Dict[str, float]]
+    active_disruption: Optional[DisruptionEvent]
+    procurement_proposal: Dict[str, Any]
+    logistics_proposal: Dict[str, Any]
+    conflict_detected: bool
+    conflict_reason: str
+    negotiation_round: int
+    max_negotiation_rounds: int
+    negotiation_log: List[Dict[str, Any]]
+    joint_solution: Optional[MultiEchelonSolution]
+    before_disruption_solution: Optional[MultiEchelonSolution]
+    cost_delta: float
+    service_delta: float
+    plain_english_briefing: str
