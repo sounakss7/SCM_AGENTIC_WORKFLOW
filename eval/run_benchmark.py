@@ -1,177 +1,162 @@
+"""Empirical Comparative Benchmark Harness for Indian E-Commerce Logistics.
+
+Runs N=200 randomized scenarios comparing 4 strategies:
+1. Blind Dispatch (Single default 3PL)
+2. Heuristic Rule-Based
+3. LLM-Only Planner (Simulated)
+4. Agents + PuLP MILP Solver (Our System)
+
+Outputs raw results to results/results.json and prints ASCII summary table.
+"""
+
 import os
 import sys
 import json
-import time
-from typing import Dict, Any, List
+import argparse
+from typing import Dict, List, Any
 
-# Ensure repository root is on Python path
+# Ensure parent directory is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from eval.benchmark_scenarios import generate_benchmark_scenarios
+from eval.benchmark_scenarios import generate_benchmark_batches
 from eval.baselines import (
-    evaluate_do_nothing,
-    evaluate_greedy,
-    evaluate_llm_only,
-    evaluate_agentic_solver
+    run_blind_dispatch,
+    run_heuristic_greedy,
+    run_llm_only,
+    run_agents_and_solver
 )
 
-def run_evaluation_benchmark(num_scenarios: int = 200, seed: int = 42) -> Dict[str, Any]:
-    """
-    Executes the full evaluation harness comparing 4 strategies across N randomized disruption scenarios.
-    Saves raw results to results/results.json.
-    """
-    print(f"\n" + "="*80)
-    print(f"=== SCM DISRUPTION RESPONSE ENGINE: BENCHMARK HARNESS (N={num_scenarios}, Seed={seed}) ===")
-    print(f"="*80)
 
-    print(f"Generating {num_scenarios} randomized scenarios from DataCo dataset...")
-    scenarios = generate_benchmark_scenarios(n=num_scenarios, seed=seed)
-    print(f"Generated {len(scenarios)} scenarios successfully.")
+def run_full_benchmark(scenario_count: int = 200, batch_size: int = 15, seed: int = 42) -> Dict[str, Any]:
+    """Execute comparative benchmark across all scenarios."""
+    print(f"Generating {scenario_count} Indian e-commerce dispatch scenarios (batch size: {batch_size}, seed: {seed})...")
+    scenarios = generate_benchmark_batches(scenario_count=scenario_count, batch_size=batch_size, seed=seed)
 
     strategies = [
-        ("Do Nothing", evaluate_do_nothing),
-        ("Rule-based Greedy", evaluate_greedy),
-        ("LLM-Only Planner", lambda s: evaluate_llm_only(s, seed=seed)),
-        ("Agents + Solver (Ours)", evaluate_agentic_solver)
+        "Blind Dispatch",
+        "Rule-based Greedy",
+        "LLM-Only Planner",
+        "Agents + MILP Solver (Ours)"
     ]
 
-    all_scenario_results: List[Dict[str, Any]] = []
-    strategy_aggregates: Dict[str, Dict[str, Any]] = {}
-
-    for strat_name, _ in strategies:
-        strategy_aggregates[strat_name] = {
-            "total_cost": 0.0,
-            "total_recovery_cost": 0.0,
-            "total_penalty_cost": 0.0,
-            "total_delay_days": 0.0,
-            "total_service_level": 0.0,
+    aggregates = {
+        strat: {
+            "total_cost_inr": 0.0,
+            "total_shipping_spend_inr": 0.0,
+            "total_rto_loss_inr": 0.0,
+            "parcels_dispatched": 0,
+            "parcels_cancelled": 0,
+            "upi_converted": 0,
             "feasible_count": 0,
-            "total_llm_calls": 0,
-            "total_latency_sec": 0.0
+            "total_latency_sec": 0.0,
+            "scenario_runs": []
         }
-
-    total_runs = num_scenarios * len(strategies)
-    run_idx = 0
-    start_benchmark_time = time.time()
-
-    print("\nExecuting comparative evaluation across all strategies...")
-    for s_idx, scenario in enumerate(scenarios):
-        scen_record = {
-            "scenario_id": scenario["scenario_id"],
-            "disruption_type": scenario["disruption_event"].disruption_type.value,
-            "location": scenario["disruption_event"].location,
-            "orders_count": len(scenario["affected_orders"]),
-            "strategies": {}
-        }
-
-        for strat_name, eval_fn in strategies:
-            run_idx += 1
-            res = eval_fn(scenario)
-            scen_record["strategies"][strat_name] = res
-
-            agg = strategy_aggregates[strat_name]
-            agg["total_cost"] += res["total_cost"]
-            agg["total_recovery_cost"] += res.get("recovery_cost", 0.0)
-            agg["total_penalty_cost"] += res.get("penalty_cost", 0.0)
-            agg["total_delay_days"] += res["avg_delay_days"]
-            agg["total_service_level"] += res["service_level_pct"]
-            agg["feasible_count"] += 1 if res["is_feasible"] else 0
-            agg["total_llm_calls"] += res["llm_calls"]
-            agg["total_latency_sec"] += res["latency_sec"]
-
-        all_scenario_results.append(scen_record)
-        
-        if (s_idx + 1) % 25 == 0 or s_idx == num_scenarios - 1:
-            pct = ((s_idx + 1) / num_scenarios) * 100
-            print(f"  Progress: {s_idx + 1}/{num_scenarios} scenarios completed ({pct:.0f}%)...")
-
-    benchmark_duration = round(time.time() - start_benchmark_time, 2)
-
-    # Compute Final Summary Table Metrics
-    summary_table = []
-    for strat_name, _ in strategies:
-        agg = strategy_aggregates[strat_name]
-        avg_cost = agg["total_cost"] / num_scenarios
-        avg_delay = agg["total_delay_days"] / num_scenarios
-        avg_service = agg["total_service_level"] / num_scenarios
-        feasibility_rate = (agg["feasible_count"] / num_scenarios) * 100.0
-        avg_llm_calls = agg["total_llm_calls"] / num_scenarios
-        avg_latency = agg["total_latency_sec"] / num_scenarios
-
-        summary_table.append({
-            "Strategy": strat_name,
-            "Total Cost ($)": round(agg["total_cost"], 2),
-            "Avg Cost / Scenario ($)": round(avg_cost, 2),
-            "Avg Delay (Days)": round(avg_delay, 2),
-            "Service Level (%)": round(avg_service, 2),
-            "Plan Feasibility (%)": round(feasibility_rate, 2),
-            "Avg LLM Calls": round(avg_llm_calls, 2),
-            "Avg Latency (s)": round(avg_latency, 4)
-        })
-
-    results_payload = {
-        "benchmark_metadata": {
-            "num_scenarios": num_scenarios,
-            "random_seed": seed,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "total_benchmark_duration_sec": benchmark_duration
-        },
-        "summary": summary_table,
-        "scenarios": all_scenario_results
+        for strat in strategies
     }
 
+    print(f"Executing comparative evaluations...")
+    for idx, batch in enumerate(scenarios, 1):
+        if idx % 20 == 0 or idx == scenario_count:
+            print(f"  Processed {idx}/{scenario_count} scenarios...")
+
+        # 1. Blind Dispatch
+        res_blind = run_blind_dispatch(batch)
+        aggregates["Blind Dispatch"]["total_cost_inr"] += res_blind["total_cost_inr"]
+        aggregates["Blind Dispatch"]["total_shipping_spend_inr"] += res_blind["total_shipping_spend_inr"]
+        aggregates["Blind Dispatch"]["total_rto_loss_inr"] += res_blind["total_rto_loss_inr"]
+        aggregates["Blind Dispatch"]["parcels_dispatched"] += res_blind["parcels_dispatched"]
+        aggregates["Blind Dispatch"]["feasible_count"] += (1 if res_blind["quota_feasible"] else 0)
+        aggregates["Blind Dispatch"]["total_latency_sec"] += res_blind["latency_sec"]
+
+        # 2. Rule-based Greedy
+        res_greedy = run_heuristic_greedy(batch)
+        aggregates["Rule-based Greedy"]["total_cost_inr"] += res_greedy["total_cost_inr"]
+        aggregates["Rule-based Greedy"]["total_shipping_spend_inr"] += res_greedy["total_shipping_spend_inr"]
+        aggregates["Rule-based Greedy"]["total_rto_loss_inr"] += res_greedy["total_rto_loss_inr"]
+        aggregates["Rule-based Greedy"]["parcels_dispatched"] += res_greedy["parcels_dispatched"]
+        aggregates["Rule-based Greedy"]["parcels_cancelled"] += res_greedy["parcels_cancelled"]
+        aggregates["Rule-based Greedy"]["feasible_count"] += (1 if res_greedy["quota_feasible"] else 0)
+        aggregates["Rule-based Greedy"]["total_latency_sec"] += res_greedy["latency_sec"]
+
+        # 3. LLM-Only
+        res_llm = run_llm_only(batch, seed=seed + idx)
+        aggregates["LLM-Only Planner"]["total_cost_inr"] += res_llm["total_cost_inr"]
+        aggregates["LLM-Only Planner"]["total_shipping_spend_inr"] += res_llm["total_shipping_spend_inr"]
+        aggregates["LLM-Only Planner"]["total_rto_loss_inr"] += res_llm["total_rto_loss_inr"]
+        aggregates["LLM-Only Planner"]["parcels_dispatched"] += res_llm["parcels_dispatched"]
+        aggregates["LLM-Only Planner"]["feasible_count"] += (1 if res_llm["quota_feasible"] else 0)
+        aggregates["LLM-Only Planner"]["total_latency_sec"] += res_llm["latency_sec"]
+
+        # 4. Agents + Solver (Ours)
+        res_ours = run_agents_and_solver(batch)
+        aggregates["Agents + MILP Solver (Ours)"]["total_cost_inr"] += res_ours["total_cost_inr"]
+        aggregates["Agents + MILP Solver (Ours)"]["total_shipping_spend_inr"] += res_ours["total_shipping_spend_inr"]
+        aggregates["Agents + MILP Solver (Ours)"]["total_rto_loss_inr"] += res_ours["total_rto_loss_inr"]
+        aggregates["Agents + MILP Solver (Ours)"]["parcels_dispatched"] += res_ours["parcels_dispatched"]
+        aggregates["Agents + MILP Solver (Ours)"]["parcels_cancelled"] += res_ours["parcels_cancelled"]
+        aggregates["Agents + MILP Solver (Ours)"]["upi_converted"] += res_ours["upi_converted"]
+        aggregates["Agents + MILP Solver (Ours)"]["feasible_count"] += (1 if res_ours["quota_feasible"] else 0)
+        aggregates["Agents + MILP Solver (Ours)"]["total_latency_sec"] += res_ours["latency_sec"]
+
+    # Calculate summary metrics
+    summary = {}
+    blind_cost = aggregates["Blind Dispatch"]["total_cost_inr"]
+
+    for strat, data in aggregates.items():
+        total_c = round(data["total_cost_inr"], 2)
+        shipping_c = round(data["total_shipping_spend_inr"], 2)
+        rto_loss = round(data["total_rto_loss_inr"], 2)
+        feas_pct = round((data["feasible_count"] / scenario_count) * 100.0, 1)
+        mean_lat = round(data["total_latency_sec"] / scenario_count, 4)
+        savings_pct = round(((blind_cost - total_c) / blind_cost) * 100.0, 1) if blind_cost > 0 else 0.0
+
+        summary[strat] = {
+            "total_cost_inr": total_c,
+            "total_shipping_spend_inr": shipping_c,
+            "total_rto_loss_inr": rto_loss,
+            "cost_reduction_vs_blind_pct": savings_pct,
+            "parcels_dispatched": data["parcels_dispatched"],
+            "parcels_cancelled": data["parcels_cancelled"],
+            "upi_converted": data["upi_converted"],
+            "feasibility_rate_pct": feas_pct,
+            "mean_latency_sec": mean_lat
+        }
+
     # Save to results/results.json
-    results_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "results"))
-    os.makedirs(results_dir, exist_ok=True)
-    results_path = os.path.join(results_dir, "results.json")
+    os.makedirs("results", exist_ok=True)
+    out_path = os.path.join("results", "results.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "scenario_count": scenario_count,
+            "batch_size": batch_size,
+            "seed": seed,
+            "summary": summary
+        }, f, indent=2)
 
-    with open(results_path, "w", encoding="utf-8") as f:
-        json.dump(results_payload, f, indent=2)
+    print(f"\nRaw results successfully saved to: {out_path}\n")
 
-    print(f"\n" + "="*80)
-    print(f"BENCHMARK RESULTS SUMMARY (Saved to {results_path})")
-    print(f"="*80)
-    
-    # Print formatted markdown table
-    print(generate_markdown_table(summary_table))
-    print(f"\nCompleted in {benchmark_duration:.2f} seconds.\n")
-
-    return results_payload
-
-
-def generate_markdown_table(summary_table: List[Dict[str, Any]]) -> str:
-    """Formats summary dictionary into GitHub-flavored markdown table."""
-    headers = [
-        "Strategy",
-        "Total Cost ($)",
-        "Avg Cost / Scenario ($)",
-        "Avg Delay (Days)",
-        "Service Level (%)",
-        "Plan Feasibility (%)",
-        "Avg LLM Calls",
-        "Avg Latency (s)"
-    ]
-    
-    lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join([":---"] + [":---:"] * (len(headers) - 1)) + " |"
-    ]
-
-    for row in summary_table:
-        line = (
-            f"| **{row['Strategy']}** "
-            f"| ${row['Total Cost ($)']:,.2f} "
-            f"| ${row['Avg Cost / Scenario ($)']:,.2f} "
-            f"| {row['Avg Delay (Days)']:.2f}d "
-            f"| {row['Service Level (%)']:.1f}% "
-            f"| {row['Plan Feasibility (%)']:.1f}% "
-            f"| {row['Avg LLM Calls']:.1f} "
-            f"| {row['Avg Latency (s)']:.4f}s |"
+    # Print ASCII Table
+    print("=" * 95)
+    print(f"{'Strategy':<30} | {'Total Cost (INR)':<16} | {'RTO Loss (INR)':<14} | {'Feasibility':<12} | {'Latency':<8}")
+    print("-" * 95)
+    for strat, m in summary.items():
+        print(
+            f"{strat:<30} | "
+            f"INR {m['total_cost_inr']:>12,.2f} | "
+            f"INR {m['total_rto_loss_inr']:>10,.2f} | "
+            f"{m['feasibility_rate_pct']:>10.1f}% | "
+            f"{m['mean_latency_sec']:>6.4f}s"
         )
-        lines.append(line)
+    print("=" * 95)
 
-    return "\n".join(lines)
+    return summary
 
 
 if __name__ == "__main__":
-    run_evaluation_benchmark(num_scenarios=200, seed=42)
+    parser = argparse.ArgumentParser(description="Run Indian e-commerce logistics comparative benchmark")
+    parser.add_argument("--scenarios", type=int, default=200, help="Number of scenarios to simulate")
+    parser.add_argument("--batch-size", type=int, default=15, help="Number of orders per batch")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    args = parser.parse_args()
+
+    run_full_benchmark(scenario_count=args.scenarios, batch_size=args.batch_size, seed=args.seed)

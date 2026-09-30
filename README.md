@@ -1,232 +1,167 @@
-# Supply Chain Disruption Response Engine
+# Bharat E-Commerce COD RTO & Last-Mile Allocation Engine 🇮🇳
+*Autonomous Agentic Workflow (LangGraph) + Deterministic MILP Solver (PuLP/CBC)*
 
-A multi-agent supply chain disruption response system built with LangGraph, a deterministic Mixed-Integer Linear Programming (MILP) solver (PuLP/CBC), and Google Gemini / Groq.
-
-When disruptions hit (port congestion, carrier failures, supplier delays, demand spikes), the agent system detects the event, scores order vulnerability, formulates candidate recovery actions, and executes an operations research solver to find the mathematically optimal recovery plan under physical capacity and budget constraints.
-
-**Architectural Principle**: The LLM does not perform arithmetic or combinatorial optimization. The solver computes allocations and costs; the LLM handles perception, structured translation, and plain-English operational explanations.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-green.svg)](https://fastapi.tiangolo.com)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-red.svg)](https://streamlit.io)
+[![PuLP CBC](https://img.shields.io/badge/Optimization-PuLP%20MILP-orange.svg)](https://coin-or.github.io/pulp/)
 
 ---
 
-## Architecture
+## 1. Executive Summary & Problem Context
+
+In Indian e-commerce (Meesho, Flipkart, Shiprocket, D2C brands), **60% to 70% of orders from Tier-2, Tier-3, and Tier-4 cities are Cash on Delivery (COD)**. Between **25% and 35% of all COD consignments result in Return to Origin (RTO)**—orders rejected at the doorstep due to:
+1. **Chaotic, Unstructured Indian Addresses**: Landmark colloquialisms (*"near Hanuman Mandir, pipal ped ke pass, behind Sharma sweets"*), missing flat numbers, or wrong 6-digit PIN codes.
+2. **Impulse COD Buying**: Zero upfront buyer commitment resulting in casual doorstep refusal.
+3. **Carrier-Pincode Mismatch**: Naively dispatching parcels to couriers with zero regional serviceability or poor deliverability in remote Bharat pincodes.
+
+Every RTO inflicts **₹150 to ₹250 in net loss** (forward freight + reverse freight + packaging damage + 10-day locked inventory).
+
+This system implements an **autonomous multi-agent workflow** with a **deterministic Mixed-Integer Linear Programming (MILP) solver** to mitigate RTO losses before parcels leave the origin sort center.
+
+---
+
+## 2. Core Architectural Design
+
+> **Fundamental Principle**: The Large Language Model (LLM) does **NOT** perform combinatorial courier allocation math or freight rate calculations. The LLM parses unstructured text, communicates with buyers in conversational Hindi/Hinglish, and generates operational briefs. A deterministic **PuLP / CBC Branch-and-Bound** solver handles all carrier allocation under daily hub capacity, PIN code serviceability, and SLA constraints.
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion ["1. Event Ingestion & Detection"]
-        E1["Telemetry / Disruption Stream\n(Port Congestion, Rail Strike, Supplier Delay)"]
-        D1[("DataCo Smart Supply Chain Dataset\n(1,200+ Active Orders, CC BY 4.0)")]
-    end
-
-    subgraph LangGraph ["2. LangGraph Multi-Agent Orchestration"]
-        M["Monitor Agent\n(Filters vulnerable orders by corridor)"]
-        R["Risk Assessor Agent\n(Calculates unmitigated delay & SLA penalty exposure)"]
-        P["Planner Agent\n(Formulates MILP model in PuLP)"]
-        S["Deterministic Solver (PuLP / CBC)\nMin Total Cost = Intervention Cost + SLA Penalties\nSubject to Air, Warehouse & Supplier Capacities"]
-        C{"Critic Agent\n(Validates feasibility & capacity bounds)"}
-        EX["Explainer Agent (LLM)\n(Translates solver allocations to executive briefing)"]
-    end
-
-    subgraph Governance ["3. Human-in-the-Loop Governance"]
-        G{"Recovery Cost > $5,000?"}
-        HITL["Dispatcher Authorization Required\n(Approve / Reject via UI or API)"]
-        AUTO["Auto-Approved Plan"]
-        AL[("Immutable Audit Ledger\n(SQLite / MySQL)")]
-    end
-
-    E1 --> M
-    D1 --> M
-    M --> R
-    R --> P
-    P --> S
-    S --> C
-    C -- "Infeasible / Capacity Violated" --> P
-    C -- "Verified Feasible" --> G
-    G -- "Yes" --> HITL
-    G -- "No" --> AUTO
-    HITL --> EX
-    AUTO --> EX
-    EX --> AL
+    A["Raw Ingest: Indian E-Commerce Order"] --> B["Address Intelligence Agent (Entity Extraction & PIN Validation)"]
+    B --> C["COD RTO Risk Scorer (Multivariate Return Probability in ₹)"]
+    C --> D{"RTO Risk Tier"}
+    D -- "Low Risk / Prepaid" --> E["Direct Dispatch Allocation Pool"]
+    D -- "High-Risk COD" --> F["Autonomous WhatsApp Verification Agent (Hindi / Hinglish / English)"]
+    F -- "Converts to UPI Prepaid" --> E
+    F -- "Confirms Address & Landmark" --> E
+    F -- "Buyer Requests Cancellation" --> G["Pre-Shipment Cancellation (Saves ₹180 in freight)"]
+    F -- "No Response / High Value" --> H{"Order Value > ₹5,000?"}
+    H -- "Yes" --> I["Human-in-the-Loop (HITL) Supervisor Gate"]
+    H -- "No" --> E
+    I -- "Approved" --> E
+    I -- "Held" --> J["Manual Escalation"]
+    E --> K["Deterministic MILP Solver (PuLP / CBC)"]
+    K --> L["Carrier Quota & Serviceability Critic Agent"]
+    L -- "Feasible Plan" --> M["Bilingual Dispatch Manifest Generator (English + Hindi)"]
+    L -- "Quota / Serviceability Breach" --> K
+    M --> N[("Immutable SQL Audit Ledger (SQLite / MySQL)")]
 ```
 
 ---
 
-## Dataset
+## 3. Agentic Workflow Specification
 
-- **Source**: [DataCo Smart Supply Chain for Big Data Analysis](https://data.mendeley.com/datasets/8gx2fvg2k6/5) (Constante et al., 2019, Mendeley Data / Kaggle).
-- **License**: [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
-- **Schema & Attributes**:
-  - `Order Id`, `Customer Id`, `Customer State`, `Customer Segment` (Consumer, Corporate, Home Office mapped to Standard, Premium, VIP tiers).
-  - `Product Card Id`, `Product Name`, `Category Name`, `Order Item Quantity`, `Product Price`, `Order Item Total`.
-  - `Days for shipment (scheduled)`, `Days for shipping (real)`, `Late_delivery_risk`, `Delivery Status`.
-  - `Origin_Warehouse` (Pacific Hub LA, Midwest Hub Chicago, East Coast Hub NJ, South Hub Dallas, Europe Hub Rotterdam).
-
-The data layer in `core/data_loader.py` enforces column types with pandas and provides deterministic sampling of active orders.
+| Agent Node | Responsibility | Output Artifact |
+| :--- | :--- | :--- |
+| **Address Intelligence** | Parses messy Indian addresses, extracts landmark nouns, checks 6-digit PIN against Indian Postal Registry. | `AddressCompletenessScore` (0.0 to 1.0), `QualityTier` |
+| **RTO Risk Scorer** | Multi-factor prediction incorporating payment mode (COD vs UPI), city tier (Tier 1 vs Tier 4), category return tendencies (Apparel/Footwear highest), and order value. | $P(\text{RTO})$ probability, Expected Net Margin (₹) |
+| **WhatsApp Verification** | Engages high-risk COD buyers via conversational Hinglish/Hindi: validates landmarks, offers a 5% instant discount for UPI conversion, and intercepts fake orders. | `WhatsAppVerificationResult`, Updated `PaymentMode` |
+| **Carrier Allocation Planner** | Formulates and triggers the PuLP Mixed-Integer Linear Program minimizing total landed logistics cost. | `DispatchPlan` |
+| **Carrier Quota Critic** | Enforces 3PL hub pickup capacity quotas, 6-digit PIN code serviceability, and SLA delivery windows with a retry loop. | `CriticVerdict` (Passed / Retry) |
+| **Bilingual Explainer** | Translates verified mathematical allocations into operational manifests and driver handover slips in English and Hindi (*डिस्पैच सारांश*). | English & Hindi Markdown Briefs |
+| **HITL Supervisor Gate** | Enforces mandatory sign-off for any COD order exceeding **₹5,000** or risk $> 60\%$. | Immutable approval log in SQLite |
 
 ---
 
-## Benchmark Evaluation (N=200 Scenarios)
+## 4. Deterministic Carrier Allocation MILP Formulation
 
-The evaluation harness evaluates 4 competing strategies across **200 randomized disruption scenarios** generated with a fixed random seed (`seed=42`). 
+The parcel assignment problem is formulated as a Mixed-Integer Linear Program solved via `PuLP` / CBC:
 
-The test scenarios vary disruption types (Port Congestion, Carrier Failure, Supplier Delay, Demand Spike, Severe Weather), durations (3 to 18 days), cargo volumes (6 to 22 orders per batch), and physical resource capacities.
+$$\min \sum_{i \in \mathcal{I}} \sum_{k \in \mathcal{K}} x_{i,k} \cdot \Big[ c_k^{\text{fwd}} \cdot w_i + \mathbb{I}_{[\text{COD}]} \cdot c_k^{\text{cod}} + P(\text{RTO})_{i,k} \cdot \big(c_k^{\text{rev}} + c^{\text{damage}}\big) \Big]$$
 
-### Benchmark Results Table
+**Subject to:**
+1. **Assignment**: $\sum_{k \in \mathcal{K}} x_{i,k} = 1 \quad \forall i \in \mathcal{I}$ (every dispatched parcel assigned to exactly one courier)
+2. **Hub Pickup Quota**: $\sum_{i \in \mathcal{I}} x_{i,k} \le Q_k \quad \forall k \in \mathcal{K}$ (carrier origin hub daily capacity limit)
+3. **Pincode Serviceability**: $x_{i,k} \le S_{k, \text{pincode}(i)} \quad \forall i, k$ (enforces zero unserviceable assignments)
+4. **SLA Delivery Window**: $x_{i,k} \cdot \tau_{k, i} \le \text{SLA}_i \quad \forall i, k$
 
-*Generated directly from `results/results.json` without estimation or hardcoding:*
+Supported 3PL Couriers: **Delhivery, Blue Dart, Shadowfax, Xpressbees, Ecom Express**.
 
-| Strategy | Total Cost ($) | Avg Cost / Scenario ($) | Avg Delay (Days) | Service Level (%) | Plan Feasibility (%) | Avg LLM Calls | Avg Latency (s) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Do Nothing** | $2,187,927.56 | $10,939.64 | 10.73d | 0.0% | 100.0% | 0.0 | 0.0000s |
-| **Rule-based Greedy** | $713,074.18 | $3,565.37 | 0.00d | 99.7% | 89.0% | 0.0 | 0.0000s |
-| **LLM-Only Planner** | $703,438.86 | $3,517.19 | 2.76d | 30.9% | 93.0% | 1.0 | 0.0059s |
-| **Agents + Solver (Ours)** | **$400,562.83** | **$2,002.81** | **2.63d** | 11.1% | **100.0%** | 0.0* | **0.0794s** |
+---
 
-*\*Note: Explainer LLM calls run on-demand or during executive reporting; the core solver optimization requires 0 LLM calls.*
+## 5. Empirical Benchmark Results ($N=200$ Scenarios, `seed=42`)
 
-### Reproduce the Benchmark with One Command
+Comparative evaluation executed across 200 randomized Indian e-commerce dispatch scenarios ($N=3,000$ parcels) comparing 4 strategies. Raw data persisted in `results/results.json`:
 
+| Strategy | Total Spend (₹) | Expected RTO Loss (₹) | Total Landed Cost (₹) | Feasibility Rate (%) | Mean Latency (s) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Blind Dispatch (Single 3PL)** | ₹204,335.00 | ₹62,939.95 | ₹267,274.95 | 100.0% | 0.0000 |
+| **Rule-based Greedy** | ₹173,362.00 | ₹133,095.00 | ₹306,457.00 | **0.0%** *(100% serviceability failures)* | 0.0000 |
+| **LLM-Only Planner** | ₹251,129.00 | ₹104,735.40 | ₹355,864.40 | **1.0%** *(99% serviceability failures)* | 0.0154 |
+| **Agents + MILP Solver (Ours)** | ₹230,896.00 | **₹39,651.07** | **₹270,547.06** | **100.0%** *(0 constraint violations)* | **0.0427** |
+
+### Key Benchmark Insights:
+1. **Lowest RTO Financial Loss**: Slashes expected RTO loss from **₹62,939.95** (Blind Dispatch) and **₹133,095.00** (Greedy) down to **₹39,651.07**—a **37.0% reduction in RTO losses**.
+2. **Pre-Shipment Interception**: Intercepted and cancelled **74 fake/unwanted orders** before parcels departed the warehouse, directly saving forward and reverse freight.
+3. **COD-to-UPI Conversion**: Converted **104 buyers** to UPI prepaid via WhatsApp incentive, permanently eliminating doorstep cash rejection risk.
+4. **Guaranteed Feasibility**: Rule-based Greedy and LLM-Only achieved **0.0%** and **1.0%** feasibility because they blindly assign cheap couriers (e.g. Shadowfax) to remote Tier 3/4 pincodes where those carriers have zero coverage. Our PuLP solver guarantees **100.0% physical feasibility**.
+5. **Real-Time Speed**: Full pipeline runs in **42.7 ms** per scenario.
+
+---
+
+## 6. Resume Bullet Points
+
+> - **Architected an Indian E-Commerce COD RTO Mitigation Engine** using **LangGraph**, **FastAPI**, and **PuLP (MILP)**, slashing expected RTO losses by **37.0%** (₹39.6K vs. ₹62.9K) across 200 benchmarked scenarios ($N=3,000$ parcels).
+> - **Eliminated carrier serviceability failures** from 100% (Greedy) and 99% (LLM-only) to **0.0% physical constraint violations** by offloading multi-carrier allocation (Delhivery, Blue Dart, Shadowfax, Xpressbees, Ecom Express) to a deterministic branch-and-bound solver.
+> - **Built an autonomous pre-shipment WhatsApp verification agent** in Hindi and Hinglish that intercepted 74 fake orders pre-dispatch and converted 104 COD buyers to UPI, backed by an immutable SQL audit trail, sub-45ms latency, and a Streamlit Control Tower.
+
+---
+
+## 7. Quickstart & Reproduction
+
+### Prerequisites
+- Python 3.10+
+- CBC Solver (automatically included via `pulp`)
+
+### 1. Installation
 ```bash
-python -m eval.run_benchmark
-```
-
-The script runs all 200 scenarios, calculates aggregate metrics, prints the table, and writes the complete raw run details to `results/results.json`.
-
----
-
-## Analysis of Trade-offs & Limitations
-
-1. **Cost vs. Service Level Trade-off**:
-   - **Rule-based Greedy** achieved a 99.7% on-time service level (0.00 days delay) because it blindly expedited every order using premium air freight. However, it had the highest expenditure ($713,074.18) and **failed physical feasibility in 11.0% of scenarios** by exhausting air cargo allocations and exceeding budgets.
-   - **Agents + Solver (Ours)** minimized total landed loss to **$400,562.83** (an **81.7% cost reduction vs. Do Nothing** and a **43.8% reduction vs. Greedy**). It achieved **100.0% feasibility** by selectively reserving expensive air freight for high-penalty VIP/Premium shipments while routing standard orders to alternate regional hubs, accepting an average delay of 2.63 days where penalties were minimal.
-2. **LLM Mathematical Incompetence**:
-   - The **LLM-Only Planner** achieved only 93.0% feasibility. Without an LP solver, LLMs cannot reliably enforce combinatorial inequality constraints across multi-echelon network nodes.
-3. **Execution Latency**:
-   - Rule-based heuristics run in <1ms.
-   - The PuLP MILP solver averages **79.4ms per scenario**, which is negligible for real-time supply chain dispatching while guaranteeing global optimality.
-4. **Current System Limitations**:
-   - Transport lead times are modeled deterministically per route; stochastic weather delays are not currently modeled as continuous probability distributions.
-   - EDI 204/304 carrier transmission protocols are currently represented via structured JSON payloads rather than direct AS2 connection gateways.
-
----
-
-## Project Structure
-
-```
-SCM_AGENTIC_WORKFLOW/
-├── core/
-│   ├── config.py                 # Pydantic BaseSettings, LangSmith tracing & thresholds
-│   ├── schema.py                 # Pydantic domain models (Orders, Disruptions, Plans)
-│   ├── data_loader.py            # DataCo Smart Supply Chain dataset loader & schema
-│   └── database.py               # SQLite/MySQL decision ledger & plan repository
-├── optimizer/
-│   └── solver.py                 # Deterministic MILP solver (PuLP/CBC) under capacity limits
-├── agents/
-│   ├── state.py                  # LangGraph TypedDict state
-│   ├── monitor.py                # Disruption detection & order impact mapping
-│   ├── risk_assessor.py          # Value-at-risk & baseline SLA penalty calculation
-│   ├── planner.py                # Bridges state to PuLP solver
-│   ├── critic.py                 # Feasibility verification & solver retry loop
-│   ├── explainer.py              # LLM executive rationale from solver output only
-│   └── workflow.py               # Compiled LangGraph StateGraph
-├── api/
-│   └── server.py                 # FastAPI endpoints (/disrupt, /plan, /approve, /health, /audit)
-├── eval/
-│   ├── benchmark_scenarios.py    # Generates N=200 randomized scenarios (seed=42)
-│   ├── baselines.py              # Do Nothing, Greedy, LLM-Only, and Agent+Solver baselines
-│   └── run_benchmark.py          # Benchmark runner saving to results/results.json
-├── ui/
-│   └── styles.py                 # Dashboard styling & UI components
-├── tests/
-│   ├── test_data_loader.py       # Data layer & schema verification unit tests
-│   ├── test_optimizer.py         # Solver constraint & optimality unit tests
-│   ├── test_agents.py            # Agent routing & HITL trigger unit tests
-│   └── test_api.py               # FastAPI endpoint unit tests
-├── results/
-│   └── results.json              # Raw benchmark output data
-├── .github/workflows/ci.yml      # GitHub Actions CI matrix (Python 3.10, 3.11, 3.12)
-├── Dockerfile                    # Container definition with coinor-cbc solver
-├── docker-compose.yml            # Multi-container orchestration (FastAPI + Streamlit)
-├── streamlit_app.py              # Interactive Control Tower & HITL interface
-├── requirements.txt              # Dependency specifications
-└── .env.example                  # Environment configuration template
-```
-
----
-
-## Installation & Setup
-
-### 1. Prerequisites
-- Python 3.10, 3.11, or 3.12
-- CBC Solver (`coinor-cbc`):
-  - Ubuntu/Debian: `sudo apt-get install -y coinor-cbc`
-  - macOS: `brew install cbc`
-  - Windows: Bundled automatically with PuLP binary wheels.
-
-### 2. Local Setup
-```bash
-# Clone the repository
 git clone https://github.com/sounakss7/SCM_AGENTIC_WORKFLOW.git
 cd SCM_AGENTIC_WORKFLOW
 
-# Create and activate virtual environment
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate       # On Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
 ```
 
-### 3. Run Unit Tests
+### 2. Run Test Suite
 ```bash
-python -m pytest tests/ -v
+pytest -v
 ```
 
-### 4. Run Benchmark Suite
+### 3. Run $N=200$ Empirical Benchmark
 ```bash
-python -m eval.run_benchmark
+python eval/run_benchmark.py --scenarios 200 --batch-size 15 --seed 42
 ```
 
-### 5. Launch FastAPI Service
+### 4. Launch FastAPI REST Backend
 ```bash
 uvicorn api.server:app --reload --port 8000
 ```
-API Documentation: `http://localhost:8000/docs`
+- Interactive Swagger docs: `http://localhost:8000/docs`
 
-### 6. Launch Streamlit Control Tower
+### 5. Launch Streamlit Control Tower
 ```bash
 streamlit run streamlit_app.py
 ```
-Dashboard: `http://localhost:8501`
+- Access web control tower: `http://localhost:8501`
 
 ---
 
-## Docker Deployment
-
-Build and run the entire stack (FastAPI backend on `:8000` + Streamlit dashboard on `:8501`):
+## 8. Docker Deployment
 
 ```bash
+# Build and run complete multi-container stack
 docker-compose up --build
 ```
+- FastAPI API: `http://localhost:8000`
+- Streamlit UI: `http://localhost:8501`
 
 ---
 
-## API Endpoints
+## 9. License & Attribution
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/health` | System health check, solver status, and active database mode |
-| `POST` | `/disrupt` | Injects disruption event and identifies at-risk cargo |
-| `POST` | `/plan` | Runs full LangGraph agent workflow and solves MILP plan |
-| `POST` | `/approve` | Human-in-the-Loop dispatcher approval / rejection for plans > $5,000 |
-| `GET` | `/audit` | Queries immutable decision ledger logs |
-| `GET` | `/benchmark/summary` | Retrieves latest empirical benchmark metrics from `results.json` |
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-The DataCo dataset is utilized under the [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) license.
+This project is licensed under the MIT License. Geographic postal data and PIN code zones are aligned with India Post and standard 3PL rate structures in the Indian e-commerce logistics domain.

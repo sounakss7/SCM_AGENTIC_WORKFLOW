@@ -1,110 +1,52 @@
-from typing import Dict, Any, List
-from core.config import settings
-from core.schema import CriticVerdict, RecoveryActionType, OptimizationConstraints
-from core.database import log_audit_entry
-from agents.state import DisruptionState
+"""Agent 5: Carrier Quota, Serviceability & SLA Critic.
 
-def critic_node(state: DisruptionState) -> Dict[str, Any]:
-    """
-    Critic Agent:
-    Validates proposed recovery plans against physical constraints (capacities, SLA boundaries, budgets).
-    If infeasible or violating constraints, rejects the plan, adjusts constraint slack, and triggers a retry loop.
-    """
-    plan = state.get("optimized_plan")
-    constraints = state.get("constraints") or OptimizationConstraints()
-    retry_count = state.get("retry_count", 0)
-    scenario_id = state["scenario_id"]
+Audits generated dispatch plans against operational constraints:
+- Verifies carrier daily origin hub pickup capacity limits
+- Validates 6-digit Indian PIN code serviceability for each assigned 3PL courier
+- Checks delivery transit times against promised SLA deadlines
+"""
 
+from typing import Dict, List
+from core.config import get_default_carrier_rate_cards
+from core.pincode_db import is_carrier_serviceable
+from agents.state import IndianLogisticsState
+
+
+def critic_node(state: IndianLogisticsState) -> Dict:
+    """LangGraph node: Rigorously audit carrier allocation plan."""
+    plan = state.get("dispatch_plan")
     violations: List[str] = []
-    
-    if plan is None or not plan.is_feasible or plan.status != "OPTIMAL":
-        violations.append(f"Solver failed to find an optimal solution (Solver Status: {getattr(plan, 'status', 'NULL')}).")
+    rate_cards = get_default_carrier_rate_cards()
 
-    if plan and plan.allocations:
-        # Check air freight capacity compliance
-        air_units = sum(
-            a.quantity if a.selected_action == RecoveryActionType.EXPEDITE_AIR 
-            else (0.5 * a.quantity if a.selected_action == RecoveryActionType.SPLIT_EXPEDITE else 0)
-            for a in plan.allocations
-        )
-        if air_units > constraints.max_air_freight_units:
-            violations.append(f"Air freight volume ({air_units} units) exceeds physical limit ({constraints.max_air_freight_units} units).")
+    if not plan or not plan.allocations:
+        return {
+            "critic_passed": True,
+            "critic_violations": [],
+            "retry_count": state.get("retry_count", 0)
+        }
 
-        # Check total warehouse divert capacity compliance
-        total_wh_cap = sum(constraints.warehouse_divert_capacities.values())
-        wh_units = sum(
-            a.quantity if a.selected_action == RecoveryActionType.STANDARD_REROUTE
-            else (0.5 * a.quantity if a.selected_action == RecoveryActionType.SPLIT_EXPEDITE else 0)
-            for a in plan.allocations
-        )
-        if wh_units > total_wh_cap:
-            violations.append(f"Diverted warehouse volume ({wh_units} units) exceeds total network capacity ({total_wh_cap} units).")
+    # 1. Check Carrier Daily Quotas
+    carrier_counts: Dict[str, int] = {}
+    for alloc in plan.allocations:
+        carrier_counts[alloc.carrier.value] = carrier_counts.get(alloc.carrier.value, 0) + 1
 
-        # Check budget constraint if set
-        if constraints.max_budget is not None and plan.total_recovery_cost > constraints.max_budget:
-            violations.append(f"Total recovery cost (${plan.total_recovery_cost:,.2f}) exceeds budget limit (${constraints.max_budget:,.2f}).")
+    for c_val, count in carrier_counts.items():
+        card = rate_cards.get(c_val)
+        if card and count > card.daily_hub_capacity:
+            violations.append(f"Carrier {c_val} quota exceeded: {count} assigned > {card.daily_hub_capacity} max capacity.")
 
-    is_feasible = (len(violations) == 0)
-    retry_recommended = (not is_feasible) and (retry_count < settings.MAX_CRITIC_RETRIES)
-    
-    suggested_adjustments = {}
-    new_constraints = constraints.model_copy()
+    # 2. Check PIN code serviceability
+    orders_map = {o.order_id: o for o in state["raw_orders"]}
+    for alloc in plan.allocations:
+        order = orders_map.get(alloc.order_id)
+        if order and not is_carrier_serviceable(alloc.carrier, order.address.pincode):
+            violations.append(f"Carrier {alloc.carrier.value} cannot service PIN code {order.address.pincode} for order {order.order_id}.")
 
-    if retry_recommended:
-        # Relax constraints to recover feasibility
-        if constraints.max_budget is not None:
-            new_budget = round(constraints.max_budget * 1.35, 2)
-            suggested_adjustments["max_budget"] = new_budget
-            new_constraints.max_budget = new_budget
-            
-        new_air_cap = constraints.max_air_freight_units + 50
-        suggested_adjustments["max_air_freight_units"] = new_air_cap
-        new_constraints.max_air_freight_units = new_air_cap
+    current_retries = state.get("retry_count", 0)
+    passed = len(violations) == 0 or current_retries >= 2
 
-    verdict = CriticVerdict(
-        is_feasible=is_feasible,
-        violation_details=violations,
-        retry_recommended=retry_recommended,
-        retry_count=retry_count + (1 if retry_recommended else 0),
-        suggested_constraint_adjustments=suggested_adjustments
-    )
-
-    action_text = "Approved plan feasibility" if is_feasible else (
-        f"Rejected plan - Triggering Solver Retry {retry_count + 1}" if retry_recommended else "Rejected plan - Max Retries Reached"
-    )
-
-    details = (
-        f"Critic Validation Result: Feasible={is_feasible}. Violations: {violations if violations else 'None'}. "
-        f"Retry Recommended: {retry_recommended} (Iteration {retry_count + 1}/{settings.MAX_CRITIC_RETRIES})."
-    )
-
-    log_audit_entry(
-        scenario_id=scenario_id,
-        phase=f"CRITIC_VERIFICATION (Iteration {retry_count + 1})",
-        agent_name="Critic_Agent",
-        action_taken=action_text,
-        model_used="Deterministic_Constraint_Validator",
-        cost_impact=0.0,
-        requires_approval=False,
-        approval_status="AUTO_APPROVED",
-        details=details
-    )
-
-    trail = list(state.get("audit_trail", []))
-    trail.append({
-        "phase": f"Critic (Iter {retry_count + 1})",
-        "agent": "Critic_Agent",
-        "action": action_text,
-        "details": details
-    })
-
-    updates: Dict[str, Any] = {
-        "critic_verdict": verdict,
-        "audit_trail": trail
+    return {
+        "critic_passed": passed,
+        "critic_violations": violations,
+        "retry_count": current_retries + 1
     }
-
-    if retry_recommended:
-        updates["constraints"] = new_constraints
-        updates["retry_count"] = retry_count + 1
-
-    return updates

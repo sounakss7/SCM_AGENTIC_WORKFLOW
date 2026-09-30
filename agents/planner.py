@@ -1,70 +1,56 @@
-from typing import Dict, Any
+"""Agent 4: Multi-Carrier Allocation Planner (PuLP MILP Integration).
+
+Formulates the parcel allocation optimization model and executes the PuLP CBC solver.
+Evaluates Human-in-the-Loop (HITL) threshold requirements for high-risk, high-value orders.
+"""
+
+from typing import Dict, List
+from core.schema import DispatchPlan, OrderRecord, PaymentMode
 from core.config import settings
-from core.database import log_audit_entry, save_recovery_plan
-from optimizer.solver import SupplyChainOptimizer
-from agents.state import DisruptionState
+from optimizer.carrier_solver import optimize_carrier_allocation
+from agents.state import IndianLogisticsState
 
-def planner_node(state: DisruptionState) -> Dict[str, Any]:
-    """
-    Planner Agent:
-    Formulates recovery alternatives (reroute, air expedite, alternate supplier, split)
-    and executes the deterministic Mixed-Integer Linear Program (PuLP).
-    The LLM does NOT do the math; the solver guarantees global optimality and physical constraints.
-    """
-    orders = state.get("affected_orders", [])
-    event = state["disruption_event"]
-    scenario_id = state["scenario_id"]
-    constraints = state.get("constraints")
-    retry_count = state.get("retry_count", 0)
 
-    optimizer = SupplyChainOptimizer(time_limit_sec=settings.SOLVER_TIMEOUT_SEC)
-    
-    plan = optimizer.solve(
-        scenario_id=scenario_id,
-        orders=orders,
-        base_disruption_delay_days=event.duration_days,
-        constraints=constraints
-    )
+def planner_node(state: IndianLogisticsState) -> Dict:
+    """LangGraph node: Optimize carrier allocation for all valid dispatch candidates."""
+    candidates = state.get("dispatched_candidates", state["raw_orders"])
+    rto_scores = state.get("rto_risk_scores", {})
 
-    # Check Human-in-the-Loop approval requirement
-    # High-cost recovery plans (> $5,000 threshold) require human approval
-    requires_approval = bool(plan.total_recovery_cost > settings.HITL_APPROVAL_THRESHOLD_USD)
-    approval_status = "PENDING" if requires_approval else "AUTO_APPROVED"
+    # Evaluate Human-in-the-Loop (HITL) trigger
+    hitl_flagged: List[str] = []
+    for order in candidates:
+        order_risk = rto_scores.get(order.order_id, 0.3)
+        if order.order_value_inr >= settings.HITL_ORDER_VALUE_THRESHOLD_INR and (order.payment_mode == PaymentMode.COD or order_risk >= settings.HITL_HIGH_RISK_PROB_THRESHOLD):
+            hitl_flagged.append(order.order_id)
 
-    # Persist plan to database
-    save_recovery_plan(plan.model_dump())
+    hitl_required = len(hitl_flagged) > 0 and not state.get("hitl_approved", False)
 
-    details = (
-        f"Generated {plan.status} Recovery Plan via PuLP (Solver time: {plan.solver_time_sec*1000:.1f}ms). "
-        f"Total Combined Cost: ${plan.total_combined_cost:,.2f} "
-        f"(Recovery Cost: ${plan.total_recovery_cost:,.2f}, Penalties: ${plan.total_penalty_cost:,.2f}). "
-        f"Service Level: {plan.service_level_pct:.1f}% ({plan.orders_on_time}/{len(orders)} on time). "
-        f"Requires Human Approval: {requires_approval} (Status: {approval_status})."
-    )
+    # Solve deterministic carrier allocation
+    plan = optimize_carrier_allocation(candidates, rto_scores)
 
-    log_audit_entry(
-        scenario_id=scenario_id,
-        phase=f"PLANNING_OPTIMIZATION (Iteration {retry_count + 1})",
-        agent_name="Planner_Agent",
-        action_taken=f"Solved MILP Allocation ({plan.status})",
-        model_used="PuLP_CBC_MIP_Solver",
-        cost_impact=plan.total_combined_cost,
-        requires_approval=requires_approval,
-        approval_status=approval_status,
-        details=details
-    )
+    # Calculate net RTO savings vs Blind Dispatch
+    # Blind dispatch baseline: assume ₹80 forward freight + ₹35 COD fee + baseline RTO loss on ALL orders
+    blind_freight_per_order = 115.0  # ₹ Forward + COD fee
+    rto_loss_per_order = 150.0  # ₹ Reverse + Damage
 
-    trail = list(state.get("audit_trail", []))
-    trail.append({
-        "phase": f"Planning (Iter {retry_count + 1})",
-        "agent": "Planner_Agent",
-        "action": f"Computed optimal allocation with PuLP: ${plan.total_combined_cost:,.2f} total cost",
-        "details": details
-    })
+    baseline_total_cost = 0.0
+    for order in state["raw_orders"]:
+        initial_risk = state.get("rto_risk_scores", {}).get(order.order_id, 0.3)
+        baseline_total_cost += blind_freight_per_order + (initial_risk * rto_loss_per_order)
+
+    # Saved cost from cancelled orders (each avoided ₹115 shipping + expected RTO loss)
+    cancelled_count = len(state.get("cancelled_orders", []))
+    upi_count = len(state.get("upi_converted_orders", []))
+
+    plan.parcels_cancelled_prevented_rto = cancelled_count
+    plan.upi_converted_count = upi_count
+    plan.rto_cost_savings_inr = round(max(0.0, baseline_total_cost - plan.total_cost_inr), 2)
+    plan.hitl_approval_required = hitl_required
+    if hitl_required:
+        plan.hitl_approval_reason = f"{len(hitl_flagged)} high-risk orders exceed ₹{settings.HITL_ORDER_VALUE_THRESHOLD_INR:,.0f} limit"
 
     return {
-        "optimized_plan": plan,
-        "requires_human_approval": requires_approval,
-        "approval_status": approval_status,
-        "audit_trail": trail
+        "dispatch_plan": plan,
+        "hitl_required": hitl_required,
+        "hitl_flagged_orders": hitl_flagged
     }
