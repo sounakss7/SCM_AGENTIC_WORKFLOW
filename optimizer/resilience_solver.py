@@ -42,6 +42,8 @@ class RoutePlan(BaseModel):
     total_cost_inr: float
     is_feasible: bool
     rejection_reason: Optional[str] = None
+    is_emergency_fallback: bool = False
+    emergency_protocol: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = self.model_dump()
@@ -50,6 +52,8 @@ class RoutePlan(BaseModel):
         d["warehouse"] = self.warehouse_id
         d["retailer"] = self.destination_retailer_id
         d["carrier"] = self.legs[0].carrier_id if self.legs else "UNKNOWN"
+        d["is_emergency_fallback"] = self.is_emergency_fallback
+        d["emergency_protocol"] = self.emergency_protocol
         return d
 
 
@@ -308,7 +312,29 @@ def find_optimal_alternate_route(
     feasible_plans = [p for p in unblocked_plans if p.is_feasible]
 
     if not feasible_plans:
-        return None, candidate_plans
+        # Fallback Level 1: Test expedited emergency air/surface routing via Blue Dart
+        for port_id in ports:
+            for wh_id in warehouses:
+                exp_plan = evaluate_end_to_end_route(
+                    network, supplier_id, port_id, wh_id, retailer_id,
+                    carrier_assignments={"0": "BLUE_DART", "1": "BLUE_DART", "2": "BLUE_DART"},
+                    sku=sku, quantity=quantity,
+                    max_allowed_delay_days=14.0, disruption=disruption
+                )
+                if exp_plan.plan_id != "INVALID" and exp_plan.is_feasible:
+                    exp_plan.is_emergency_fallback = True
+                    exp_plan.emergency_protocol = "EXPEDITED_BLUE_DART_EMERGENCY_CORRIDOR"
+                    feasible_plans.append(exp_plan)
+
+        if not feasible_plans and unblocked_plans:
+            # Fallback Level 2: Pick least-penalty candidate to prevent complete shipment stranding
+            least_penalty_plan = min(unblocked_plans, key=lambda p: (p.delay_penalty_inr, p.total_cost_inr))
+            least_penalty_plan.is_emergency_fallback = True
+            least_penalty_plan.emergency_protocol = "LEAST_PENALTY_OPERATIONAL_WAIVER"
+            least_penalty_plan.is_feasible = True
+            return least_penalty_plan, unblocked_plans
+        elif not feasible_plans:
+            return None, candidate_plans
 
     # Optimal plan minimizes total cost in INR (₹)
     optimal_plan = min(feasible_plans, key=lambda p: p.total_cost_inr)

@@ -47,6 +47,7 @@ class HybridLLMClient:
 
     def __init__(self):
         self.call_history: List[LLMCallRecord] = []
+        self.force_emulation: bool = False
 
     def call_gemini_reasoning(self, agent_name: str, prompt: str, mock_fallback: str) -> Tuple[str, LLMCallRecord]:
         """Call Google Gemini (2.5 Flash / 3.5 Flash Lite) for high-reasoning operational assessment or briefing."""
@@ -56,12 +57,12 @@ class HybridLLMClient:
         chosen_model = "gemini-2.5-flash"
         is_sim = True
 
-        if gemini_key:
-            candidate_models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+        if gemini_key and not self.force_emulation:
+            candidate_models = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"]
             for model_id in candidate_models:
                 try:
                     from google import genai
-                    client = genai.Client(api_key=gemini_key)
+                    client = genai.Client(api_key=gemini_key, http_options={"timeout": 10000})
                     resp = client.models.generate_content(
                         model=model_id,
                         contents=prompt
@@ -100,12 +101,12 @@ class HybridLLMClient:
         chosen_model = "qwen/qwen3.8-27b"
         is_sim = True
 
-        if groq_key:
+        if groq_key and not self.force_emulation:
             candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
             for model_id in candidate_models:
                 try:
                     from groq import Groq
-                    client = Groq(api_key=groq_key)
+                    client = Groq(api_key=groq_key, timeout=12.0)
                     chat = client.chat.completions.create(
                         messages=[{"role": "user", "content": prompt}],
                         model=model_id,
