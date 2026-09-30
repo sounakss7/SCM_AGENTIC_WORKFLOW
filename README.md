@@ -1,4 +1,4 @@
-# Indian Supply Chain Resilience Control Tower
+# Prototype: Indian Supply Chain Resilience Agent
 *5-Agent LangGraph System with Deterministic OR Solver Core & Multi-Model Inference (Google Gemini 2.5 Flash + Groq LPU)*
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
