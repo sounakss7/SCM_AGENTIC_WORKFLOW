@@ -1,6 +1,9 @@
 import os
 import streamlit as st
-import pymysql
+try:
+    import pymysql
+except ImportError:
+    pymysql = None
 import sqlite3
 from datetime import datetime
 
@@ -130,6 +133,36 @@ def init_database():
                 FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS routing_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT,
+                cycle INTEGER DEFAULT 0,
+                plan_id TEXT,
+                origin_supplier TEXT,
+                port TEXT,
+                warehouse TEXT,
+                destination_retailer TEXT,
+                carrier TEXT,
+                total_cost REAL,
+                cost_delta REAL,
+                transit_days REAL,
+                status TEXT,
+                rejection_reason TEXT,
+                timestamp TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS security_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT,
+                threat_type TEXT,
+                payload TEXT,
+                agent_name TEXT,
+                action_taken TEXT,
+                timestamp TEXT
+            )
+        """)
         conn.commit()
         conn.close()
     else:
@@ -197,6 +230,36 @@ def init_database():
                         model_used VARCHAR(100),
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS routing_decisions (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        order_id VARCHAR(50),
+                        cycle INT DEFAULT 0,
+                        plan_id VARCHAR(50),
+                        origin_supplier VARCHAR(50),
+                        port VARCHAR(50),
+                        warehouse VARCHAR(50),
+                        destination_retailer VARCHAR(50),
+                        carrier VARCHAR(50),
+                        total_cost DECIMAL(12, 2),
+                        cost_delta DECIMAL(12, 2),
+                        transit_days DECIMAL(6, 2),
+                        status VARCHAR(50),
+                        rejection_reason TEXT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS security_audit (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        order_id VARCHAR(50),
+                        threat_type VARCHAR(100),
+                        payload TEXT,
+                        agent_name VARCHAR(100),
+                        action_taken VARCHAR(100),
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
             conn.commit()
@@ -501,3 +564,116 @@ def insert_new_customer(customer_id, name, email, company, address, tier="Standa
     finally:
         conn.close()
 
+
+
+def save_routing_decision(order_id, cycle, plan_dict, status="PROPOSED", rejection_reason=None):
+    """Save a routing decision to MySQL/SQLite audit trail with parameterized query."""
+    if not plan_dict:
+        return
+    conn, cursor = get_db_cursor()
+    try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        plan_id = str(plan_dict.get("plan_id", ""))
+        origin = str(plan_dict.get("origin_supplier_id") or plan_dict.get("supplier", ""))
+        port = str(plan_dict.get("port_id") or plan_dict.get("port", ""))
+        warehouse = str(plan_dict.get("warehouse_id") or plan_dict.get("warehouse", ""))
+        dest = str(plan_dict.get("destination_retailer_id") or plan_dict.get("retailer", ""))
+        carrier = str(plan_dict.get("carrier", ""))
+        total_cost = float(plan_dict.get("total_cost_inr", plan_dict.get("total_cost", 0.0)))
+        cost_delta = float(plan_dict.get("cost_delta_inr", plan_dict.get("cost_delta", 0.0)))
+        transit_days = float(plan_dict.get("total_transit_days", 0.0))
+        rej_str = str(rejection_reason) if rejection_reason else None
+
+        if is_using_sqlite():
+            cursor.execute("""
+                INSERT INTO routing_decisions (order_id, cycle, plan_id, origin_supplier, port, warehouse, destination_retailer, carrier, total_cost, cost_delta, transit_days, status, rejection_reason, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, int(cycle), plan_id, origin, port, warehouse, dest, carrier, total_cost, cost_delta, transit_days, status, rej_str, now_str))
+        else:
+            cursor.execute("""
+                INSERT INTO routing_decisions (order_id, cycle, plan_id, origin_supplier, port, warehouse, destination_retailer, carrier, total_cost, cost_delta, transit_days, status, rejection_reason, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (order_id, int(cycle), plan_id, origin, port, warehouse, dest, carrier, total_cost, cost_delta, transit_days, status, rej_str, now_str))
+        conn.commit()
+    except Exception as e:
+        print(f"Error saving routing decision: {e}")
+    finally:
+        conn.close()
+
+def get_routing_decisions(order_id):
+    """Retrieve all routing decisions for an order from SQL database."""
+    if not order_id:
+        return []
+    conn, cursor = get_db_cursor()
+    try:
+        if is_using_sqlite():
+            cursor.execute("SELECT * FROM routing_decisions WHERE order_id = ? ORDER BY id ASC", (order_id.strip(),))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        else:
+            cursor.execute("SELECT * FROM routing_decisions WHERE order_id = %s ORDER BY id ASC", (order_id.strip(),))
+            rows = cursor.fetchall()
+            return rows
+    except Exception as e:
+        print(f"Error querying routing decisions: {e}")
+        return []
+    finally:
+        conn.close()
+
+def save_security_audit_record(order_id, threat_type, payload, agent_name, action_taken="QUARANTINED"):
+    """Save a security threat incident to MySQL/SQLite audit trail with parameterized query."""
+    conn, cursor = get_db_cursor()
+    try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        safe_payload = str(payload)[:500]
+        if is_using_sqlite():
+            cursor.execute("""
+                INSERT INTO security_audit (order_id, threat_type, payload, agent_name, action_taken, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (order_id, threat_type, safe_payload, agent_name, action_taken, now_str))
+        else:
+            cursor.execute("""
+                INSERT INTO security_audit (order_id, threat_type, payload, agent_name, action_taken, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (order_id, threat_type, safe_payload, agent_name, action_taken, now_str))
+        conn.commit()
+    except Exception as e:
+        print(f"Error saving security audit record: {e}")
+    finally:
+        conn.close()
+
+def get_security_audit_records(order_id=None, limit=50):
+    """Retrieve security threat audit records from SQL database."""
+    conn, cursor = get_db_cursor()
+    try:
+        if isinstance(order_id, int):
+            limit = order_id
+            order_id = None
+
+        if order_id:
+            if is_using_sqlite():
+                cursor.execute("SELECT * FROM security_audit WHERE order_id = ? ORDER BY id DESC LIMIT ?", (order_id, limit))
+                rows = cursor.fetchall()
+                return [dict(r) for r in rows]
+            else:
+                cursor.execute("SELECT * FROM security_audit WHERE order_id = %s ORDER BY id DESC LIMIT %s", (order_id, limit))
+                rows = cursor.fetchall()
+                return rows
+        else:
+            if is_using_sqlite():
+                cursor.execute("SELECT * FROM security_audit ORDER BY id DESC LIMIT ?", (limit,))
+                rows = cursor.fetchall()
+                return [dict(r) for r in rows]
+            else:
+                cursor.execute("SELECT * FROM security_audit ORDER BY id DESC LIMIT %s", (limit,))
+                rows = cursor.fetchall()
+                return rows
+    except Exception as e:
+        print(f"Error querying security audit records: {e}")
+        return []
+    finally:
+        conn.close()
+
+def log_agent_step(order_id, phase, agent_name, action, model_used="Deterministic Engine", cost_savings="$0.00", live_location="N/A"):
+    """High-level helper to log an agent execution step to SQL database audit trail."""
+    return save_order_history_record(order_id, phase, agent_name, action, model_used, cost_savings, live_location)

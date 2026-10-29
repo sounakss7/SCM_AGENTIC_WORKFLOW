@@ -26,7 +26,7 @@ def routing_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowStat
     source_supplier = state.get("source_supplier")
     target_retailer = state.get("target_retailer")
     nominal_plan = state.get("nominal_plan", {})
-    disruption = state.get("disruption", {})
+    disruption = state.get("disruption", {}) or {}
     retry_count = state.get("retry_count", 0)
 
     # Determine blocked elements from disruption
@@ -43,12 +43,16 @@ def routing_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowStat
     if disruption.get("warehouse") and disruption.get("retailer"):
         blocked_lanes.append((disruption["warehouse"], disruption["retailer"]))
 
-    # If this is a retry triggered by validator rejection, add validator rejected carrier
+    # If this is a retry triggered by validator rejection, add validator rejected carrier or congested port
     validation_result = state.get("validation_result")
     if validation_result and not validation_result.get("is_valid", True):
         prev_carrier = state.get("proposed_plan", {}).get("carrier")
         if prev_carrier and prev_carrier not in blocked_carriers:
             blocked_carriers.append(prev_carrier)
+        prev_port = state.get("proposed_plan", {}).get("port")
+        violations = validation_result.get("violations", [])
+        if prev_port and any("port" in str(v).lower() or "congestion" in str(v).lower() or "rejected" in str(v).lower() for v in violations):
+            congested_ports[prev_port] = 8.0  # Force rerouting to alternate port (e.g. Seattle / Mundra)
 
     # Run deterministic optimization solver (NO LLM MATH)
     alternate_plan, _ = find_optimal_alternate_route(

@@ -1,8 +1,9 @@
 """Validator Agent (Agent 4 in Resilience Workflow).
 
-Uses Groq (Llama 3.3 70B / 8B) for ultra-low latency plan validation,
-cross-checking physical node capacity, carrier vehicle limits, and delivery SLA windows.
-Triggers a self-correcting re-routing loop if constraints are breached.
+Uses Groq (Llama 3.3 70B / 8B / Qwen) for ultra-low latency plan validation,
+cross-checking physical node capacity, carrier vehicle limits, port congestion,
+and delivery SLA windows.
+Triggers a self-correcting re-routing loop if constraints are breached or carrier rejects booking.
 """
 
 import json
@@ -23,6 +24,7 @@ def validator_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowSt
     proposed_plan = state.get("proposed_plan")
     retry_count = state.get("retry_count", 0)
     max_retries = state.get("max_retries", 3)
+    disruption = state.get("disruption", {}) or {}
 
     if not proposed_plan:
         logs.append({
@@ -40,6 +42,7 @@ def validator_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowSt
 
     carrier_id = proposed_plan.get("carrier")
     warehouse_id = proposed_plan.get("warehouse")
+    port_id = proposed_plan.get("port")
     transit_days = proposed_plan.get("total_transit_days", 0.0)
     quantity = state.get("quantity", 100)
 
@@ -77,11 +80,26 @@ def validator_agent_node(state: DisruptionWorkflowState) -> DisruptionWorkflowSt
             f"Total transit duration {transit_days} days exceeds Indian retail SLA ceiling ({MAX_SLA_DAYS} days)."
         )
 
+    # 4. Simulated Carrier Booking Rejection & Port Congestion Check
+    disrupt_type = disruption.get("disruption_type") or disruption.get("type")
+    disrupt_port = disruption.get("port") or disruption.get("target_id")
+    is_booking_rejected = bool(disruption.get("carrier_booking_rejected", False))
+    is_port_strike_or_congestion = str(disrupt_type) in [
+        "PORT_CONGESTION", "PORT_STRIKE", "CAPACITY_CHOKE",
+        "DisruptionType.PORT_CONGESTION", "DisruptionType.PORT_STRIKE"
+    ] and disrupt_port and str(disrupt_port) == str(port_id)
+
+    if (is_booking_rejected or is_port_strike_or_congestion) and retry_count == 0:
+        violations.append(
+            f"Carrier booking rejected: Port congestion / capacity dwell at {port_id}. Alternate gateway required."
+        )
+
     # Formulate validation prompt for Groq
     prompt = f"""
 [Groq Low-Latency Validator]
 Inspect proposed supply chain route plan:
 - Carrier: {carrier_id}
+- Port: {port_id}
 - Warehouse: {warehouse_id}
 - Order Quantity: {quantity}
 - Total Transit: {transit_days} days
