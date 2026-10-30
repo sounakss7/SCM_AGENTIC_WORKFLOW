@@ -42,50 +42,59 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.1rem;
-        font-weight: 700;
-        color: #1a202c;
-        margin-bottom: 0.2rem;
+        font-size: 2.2rem;
+        font-weight: 800;
+        background: linear-gradient(120deg, #38bdf8 0%, #818cf8 50%, #34d399 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.25rem;
     }
     .sub-caption {
-        color: #4a5568;
-        font-size: 1.0rem;
+        color: #cbd5e1 !important;
+        font-size: 1.05rem;
         margin-bottom: 1.2rem;
     }
     .status-pill-live {
-        background-color: #e6f4ea;
-        color: #137333;
-        padding: 4px 10px;
+        background-color: rgba(34, 197, 94, 0.15);
+        color: #4ade80;
+        padding: 4px 12px;
         border-radius: 12px;
         font-weight: 600;
         font-size: 0.85em;
         display: inline-block;
-        border: 1px solid #ceead6;
+        border: 1px solid rgba(34, 197, 94, 0.35);
     }
     .status-pill-offline {
-        background-color: #fef7e0;
-        color: #b06000;
-        padding: 4px 10px;
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fcd34d;
+        padding: 4px 12px;
         border-radius: 12px;
         font-weight: 600;
         font-size: 0.85em;
         display: inline-block;
-        border: 1px solid #feefc3;
+        border: 1px solid rgba(245, 158, 11, 0.35);
     }
     .route-node-box {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 8px;
         padding: 12px;
         text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
     .route-arrow {
         font-size: 1.5rem;
-        color: #a0aec0;
+        color: #94a3b8;
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+    .custom-card {
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -171,6 +180,13 @@ llm_router.force_emulation = (mode_choice == "Offline Deterministic Emulation")
 
 # 2. Order Parameters
 st.sidebar.subheader("1. Order Parameters")
+
+use_custom_order = st.sidebar.checkbox("✍️ Enter Custom Order ID / Parameters", value=False)
+if use_custom_order:
+    order_id_input = st.sidebar.text_input("Custom Order ID", value="ORD-CUSTOM-001")
+else:
+    order_id_input = None
+
 supplier_opts = list(SUPPLIERS_DB.keys())
 sel_supplier = st.sidebar.selectbox(
     "Origin Sourcing Hub",
@@ -195,18 +211,67 @@ sel_sku = st.sidebar.selectbox(
     format_func=lambda x: f"{SKUS_DB[x].name} (₹{SKUS_DB[x].selling_price_inr})"
 )
 
-sel_qty = st.sidebar.slider("Shipment Volume (Units)", min_value=25, max_value=300, value=100, step=25)
+sel_qty = st.sidebar.slider("Shipment Volume (Units)", min_value=10, max_value=500, value=100, step=10)
+final_order_id = order_id_input if (use_custom_order and order_id_input) else f"ORD-IND-{sel_qty}"
 
-# 3. Disruption Preset Selection
-st.sidebar.subheader("2. Inject Operational Incident")
-predefined = get_predefined_disruptions()
-preset_names = ["None (Steady State Operations)"] + [f"{d.event_id}: {d.description[:42]}..." for d in predefined]
-sel_preset = st.sidebar.selectbox("Indian Incident Catalog", preset_names, index=2)  # Default to Safexpress strike
+# 3. Disruption Configuration (Custom Input Space)
+st.sidebar.subheader("2. Operational Incident Setup")
+disrupt_mode = st.sidebar.radio(
+    "Incident Source",
+    ["✍️ Custom User-Defined Disruption", "📋 Predefined Catalog Incidents", "🟢 Steady State (No Disruption)"],
+    index=0
+)
 
 active_disruption = None
-if sel_preset != "None (Steady State Operations)":
-    disrupt_idx = preset_names.index(sel_preset) - 1
-    active_disruption = predefined[disrupt_idx]
+
+if disrupt_mode == "✍️ Custom User-Defined Disruption":
+    st.sidebar.caption("Fill in your own custom disruption parameters:")
+    c_desc = st.sidebar.text_area(
+        "Incident Description / Carrier Notice",
+        value="Container dwell backlog surged at transit port; carrier rejected initial booking.",
+        help="Type any real-world disruption description."
+    )
+    c_type = st.sidebar.selectbox(
+        "Disruption Category",
+        [DisruptionType.PORT_CONGESTION.value, DisruptionType.CARRIER_FAILURE.value, DisruptionType.ROUTE_CLOSURE.value, DisruptionType.CAPACITY_CHOKE.value],
+        index=0
+    )
+    c_target_type = st.sidebar.selectbox("Target Entity Type", ["PORT", "CARRIER", "LINK"], index=0)
+    
+    if c_target_type == "CARRIER":
+        c_target_id = st.sidebar.selectbox("Target Carrier", list(CARRIERS_DB.keys()), index=0)
+    elif c_target_type == "PORT":
+        c_target_id = st.sidebar.selectbox("Target Port", list(PORTS_DB.keys()), index=0)
+    else:
+        c_target_id = st.sidebar.text_input("Target Link ID", value="L_JNPT_MUM")
+
+    col_c1, col_c2 = st.sidebar.columns(2)
+    with col_c1:
+        c_delay = st.number_input("Delay Added (Days)", min_value=0.0, max_value=30.0, value=5.0, step=0.5)
+    with col_c2:
+        c_surcharge = st.number_input("Penalty Surcharge %", min_value=0.0, max_value=200.0, value=40.0, step=5.0)
+
+    c_cap = st.sidebar.slider("Capacity Reduction %", 0, 100, 100, step=5)
+    c_sev = SeverityLevel.CRITICAL if c_cap >= 80 else (SeverityLevel.HIGH if c_cap >= 50 else SeverityLevel.MEDIUM)
+
+    active_disruption = DisruptionEvent(
+        event_id="CUSTOM-USER-DIS",
+        disruption_type=DisruptionType(c_type),
+        target_type=c_target_type,
+        target_id=c_target_id,
+        severity=c_sev,
+        delay_days_added=float(c_delay),
+        cost_surcharge_pct=float(c_surcharge),
+        capacity_reduction_pct=float(c_cap),
+        description=c_desc
+    )
+    st.sidebar.success(f"Configured: {c_target_type} '{c_target_id}' (+{c_delay}d delay, +{c_surcharge}% penalty)")
+
+elif disrupt_mode == "📋 Predefined Catalog Incidents":
+    predefined = get_predefined_disruptions()
+    preset_names = [f"{d.event_id}: {d.description[:42]}..." for d in predefined]
+    sel_idx = st.sidebar.selectbox("Select Incident from Catalog", range(len(preset_names)), format_func=lambda i: preset_names[i], index=1)
+    active_disruption = predefined[sel_idx]
     st.sidebar.info(f"**Disruption Detail**:\n{active_disruption.description}\n- Delay: +{active_disruption.delay_days_added} days\n- Penalty: +{active_disruption.cost_surcharge_pct}%")
 
 run_btn = st.sidebar.button("🚀 Execute 5-Agent Resilience Workflow", type="primary", width="stretch")
@@ -215,7 +280,7 @@ run_btn = st.sidebar.button("🚀 Execute 5-Agent Resilience Workflow", type="pr
 if "workflow_result" not in st.session_state or run_btn:
     with st.spinner("Executing 5-Agent LangGraph Workflow..."):
         st.session_state.workflow_result = run_resilience_workflow(
-            order_id=f"ORD-IND-{sel_qty}",
+            order_id=final_order_id,
             sku_id=sel_sku,
             quantity=sel_qty,
             source_supplier=sel_supplier,
@@ -229,12 +294,12 @@ wf_state = st.session_state.workflow_result
 # Main Dashboard Tabs
 # ==========================================
 tab1, tab2, tab3, tab_db, tab4, tab5 = st.tabs([
-    "🤖 5-Agent Execution & Model Routing",
-    "📊 Financial & SLA Impact (INR ₹)",
-    "🛣️ End-to-End Route Visualizer",
-    "🗄️ SQL Audit Trail & Database",
-    "📈 100-Scenario Empirical Benchmark",
-    "💡 Architecture & Fallback Protocols"
+    "🤖 5-Agent Trace",
+    "📊 Financial Impact",
+    "🛣️ Route Map",
+    "🗄️ SQL Audit Trail",
+    "📈 Benchmark (100)",
+    "💡 Architecture"
 ])
 
 with tab1:
