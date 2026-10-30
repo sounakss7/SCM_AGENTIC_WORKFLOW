@@ -22,6 +22,14 @@ from core.disruptions import (
 from optimizer.resilience_solver import find_optimal_alternate_route, evaluate_end_to_end_route
 from agents.workflow import run_resilience_workflow
 from agents.llm_client import llm_router, get_gemini_key, get_groq_key
+from database.db_manager import (
+    is_using_sqlite,
+    get_routing_decisions,
+    get_all_order_history,
+    get_security_audit_records,
+    seed_database,
+    init_database
+)
 
 st.set_page_config(
     page_title="Indian Supply Chain Resilience Agent (Prototype)",
@@ -201,7 +209,7 @@ if sel_preset != "None (Steady State Operations)":
     active_disruption = predefined[disrupt_idx]
     st.sidebar.info(f"**Disruption Detail**:\n{active_disruption.description}\n- Delay: +{active_disruption.delay_days_added} days\n- Penalty: +{active_disruption.cost_surcharge_pct}%")
 
-run_btn = st.sidebar.button("🚀 Execute 5-Agent Resilience Workflow", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("🚀 Execute 5-Agent Resilience Workflow", type="primary", width="stretch")
 
 # Run or restore workflow state
 if "workflow_result" not in st.session_state or run_btn:
@@ -220,10 +228,11 @@ wf_state = st.session_state.workflow_result
 # ==========================================
 # Main Dashboard Tabs
 # ==========================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab_db, tab4, tab5 = st.tabs([
     "🤖 5-Agent Execution & Model Routing",
     "📊 Financial & SLA Impact (INR ₹)",
     "🛣️ End-to-End Route Visualizer",
+    "🗄️ SQL Audit Trail & Database",
     "📈 100-Scenario Empirical Benchmark",
     "💡 Architecture & Fallback Protocols"
 ])
@@ -268,7 +277,7 @@ with tab1:
                 "Execution Mode": "Local Emulation (Fallback)" if r.get("simulated") else "Live Cloud API 🟢",
                 "Response Snippet": r["response_snippet"]
             })
-        st.dataframe(pd.DataFrame(telemetry_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(telemetry_rows), width="stretch")
     else:
         st.write("No LLM calls required (Shipment proceeding on nominal steady-state route).")
 
@@ -387,7 +396,61 @@ with tab3:
         }
         for c in CARRIERS_DB.values()
     ]
-    st.dataframe(pd.DataFrame(c_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(c_data), width="stretch")
+
+with tab_db:
+    st.subheader("🗄️ SQL Database Audit Trail (MySQL / SQLite Fallback)")
+    st.markdown(
+        "Every routing decision, self-correction iteration, agent step, and quarantined threat is recorded in a persistent SQL database using parameterized queries."
+    )
+
+    col_d1, col_d2, col_d3 = st.columns(3)
+    using_sqlite = is_using_sqlite()
+    with col_d1:
+        st.metric("Database Engine", "SQLite (local_orders.db)" if using_sqlite else "MySQL Server")
+    with col_d2:
+        decisions_list = get_routing_decisions(limit=100)
+        st.metric("Routing Decisions Logged", len(decisions_list))
+    with col_d3:
+        history_list = get_all_order_history(limit=100)
+        st.metric("Agent Execution Steps", len(history_list))
+
+    db_col1, db_col2, db_col3 = st.columns([1, 1, 2])
+    with db_col1:
+        if st.button("🌱 Seed Demo Data", width="stretch"):
+            seed_database()
+            st.success("Database seeded with sample orders!")
+            st.rerun()
+    with db_col2:
+        if st.button("🔄 Refresh DB Records", width="stretch"):
+            st.rerun()
+
+    st.markdown("#### 1. Routing Decisions (`routing_decisions` table)")
+    st.caption("Logs all candidate routing plans evaluated across normal execution and self-correction cycles.")
+    if decisions_list:
+        df_dec = pd.DataFrame(decisions_list)
+        disp_cols = [c for c in ["order_id", "cycle", "carrier", "port", "warehouse", "total_cost", "transit_days", "status", "rejection_reason", "timestamp"] if c in df_dec.columns]
+        st.dataframe(df_dec[disp_cols] if disp_cols else df_dec, width="stretch")
+    else:
+        st.info("No routing decisions logged yet. Execute a workflow from the sidebar to record decisions.")
+
+    st.markdown("#### 2. Agent Execution Steps (`order_history` table)")
+    st.caption("Granular event-sourcing trace of every agent step, model used, and live location.")
+    if history_list:
+        df_hist = pd.DataFrame(history_list)
+        disp_hcols = [c for c in ["order_id", "phase", "agent_name", "action", "model_used", "cost_savings", "live_location", "timestamp"] if c in df_hist.columns]
+        st.dataframe(df_hist[disp_hcols] if disp_hcols else df_hist, width="stretch")
+    else:
+        st.info("No order history records logged yet.")
+
+    st.markdown("#### 3. Zero-Trust Security Logs (`security_audit` table)")
+    st.caption("Interception log of quarantined prompt and SQL injection attempts.")
+    sec_records = get_security_audit_records(limit=50)
+    if sec_records:
+        df_sec = pd.DataFrame(sec_records)
+        st.dataframe(df_sec, width="stretch")
+    else:
+        st.success("Perimeter Secure: No security threats currently quarantined.")
 
 with tab4:
     st.subheader("Empirical 100-Scenario Disruption Benchmark")
@@ -411,7 +474,7 @@ with tab4:
                 "scenario_id", "order_id", "sku_name", "quantity", "supplier",
                 "disruption_type", "disruption_target", "cost_saved_inr", "delay_saved_days", "reassigned_carrier"
             ]],
-            use_container_width=True
+            width="stretch"
         )
     else:
         st.warning("Benchmark results not yet found. Run `python eval/benchmark_100.py` to generate `results/results.json`.")

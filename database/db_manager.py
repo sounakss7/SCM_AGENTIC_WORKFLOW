@@ -600,20 +600,32 @@ def save_routing_decision(order_id, cycle, plan_dict, status="PROPOSED", rejecti
     finally:
         conn.close()
 
-def get_routing_decisions(order_id):
-    """Retrieve all routing decisions for an order from SQL database."""
-    if not order_id:
-        return []
+def get_routing_decisions(order_id=None, limit=50):
+    """Retrieve routing decisions for an order or all recent orders from SQL database."""
     conn, cursor = get_db_cursor()
     try:
-        if is_using_sqlite():
-            cursor.execute("SELECT * FROM routing_decisions WHERE order_id = ? ORDER BY id ASC", (order_id.strip(),))
-            rows = cursor.fetchall()
-            return [dict(r) for r in rows]
+        if isinstance(order_id, int):
+            limit = order_id
+            order_id = None
+
+        if order_id:
+            if is_using_sqlite():
+                cursor.execute("SELECT * FROM routing_decisions WHERE order_id = ? ORDER BY id ASC LIMIT ?", (order_id.strip(), limit))
+                rows = cursor.fetchall()
+                return [dict(r) for r in rows]
+            else:
+                cursor.execute("SELECT * FROM routing_decisions WHERE order_id = %s ORDER BY id ASC LIMIT %s", (order_id.strip(), limit))
+                rows = cursor.fetchall()
+                return rows
         else:
-            cursor.execute("SELECT * FROM routing_decisions WHERE order_id = %s ORDER BY id ASC", (order_id.strip(),))
-            rows = cursor.fetchall()
-            return rows
+            if is_using_sqlite():
+                cursor.execute("SELECT * FROM routing_decisions ORDER BY id DESC LIMIT ?", (limit,))
+                rows = cursor.fetchall()
+                return [dict(r) for r in rows]
+            else:
+                cursor.execute("SELECT * FROM routing_decisions ORDER BY id DESC LIMIT %s", (limit,))
+                rows = cursor.fetchall()
+                return rows
     except Exception as e:
         print(f"Error querying routing decisions: {e}")
         return []
